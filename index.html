@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eventos - Leão do Parque</title>
+<style>
+  :root {
+    --verde: #1f4d3a;
+    --verde-escuro: #143327;
+    --bordo: #7a1f2b;
+    --bg: #f6f5f1;
+    --card: #ffffff;
+    --border: #e2e0d8;
+    --text: #22221f;
+    --text-mut: #6b6a64;
+    --orcado: #7a1f2b;
+    --confirmado: #b8860b;
+    --parcial: #1f6fb2;
+    --pago: #1f4d3a;
+    --concluido: #555;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--verde-escuro);
+    color: #fff;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: 0.75; }
+  #app { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .months { display: flex; gap: 6px; overflow-x: auto; flex: 1; padding-bottom: 4px; }
+  .month-chip {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-mut);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .month-chip.disabled { color: #c8c6bd; cursor: not-allowed; }
+  .month-chip.active { background: var(--verde); color: #fff; border-color: var(--verde); }
+  .year-sep { color: var(--text-mut); font-size: 12px; align-self: center; padding: 0 4px; }
+
+  .btn {
+    border: 1px solid var(--border);
+    background: #fff;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .btn.primary { background: var(--verde); color: #fff; border-color: var(--verde); }
+
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-mut); margin-bottom: 12px; flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+  /* Lista (mobile) */
+  .lista { display: flex; flex-direction: column; gap: 8px; }
+  .card-evento {
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .card-evento .hora { min-width: 42px; font-weight: 700; font-size: 14px; }
+  .card-evento .info { flex: 1; }
+  .card-evento .info .nome { font-weight: 700; font-size: 14px; margin: 0; }
+  .card-evento .info .meta { font-size: 12px; margin: 2px 0 0; opacity: 0.85; }
+  .status-pill { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 5px; white-space: nowrap; background: rgba(255,255,255,0.35); }
+  .dia-label { font-size: 12px; color: var(--text-mut); margin: 14px 0 6px; }
+
+  /* Calendário (desktop) */
+  .calendario { display: none; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .cal-head, .cal-day { background: var(--card); min-height: 96px; padding: 5px; }
+  .cal-head { min-height: auto; text-align: center; font-size: 11px; color: var(--text-mut); padding: 6px; }
+  .cal-day .num { font-size: 11px; color: var(--text-mut); }
+  .cal-day.tem-evento { padding: 0; }
+  .cal-day .evt-bloco {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 6px;
+    cursor: pointer;
+    color: #fff;
+  }
+  .cal-day .evt-bloco .evt-num { font-size: 11px; opacity: 0.85; }
+  .cal-day .evt-bloco .evt-nome { font-size: 12px; font-weight: 600; line-height: 1.25; margin-top: 2px; }
+  .cal-day .evt-bloco .evt-detalhe { font-size: 10px; opacity: 0.9; margin-top: 2px; }
+
+  @media (min-width: 860px) {
+    .lista { display: none; }
+    .calendario { display: block; }
+  }
+
+  /* Modal */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .overlay.open { display: flex; }
+  .modal-shell { width: 100%; max-width: 440px; }
+  .modal { background: #fff; border-radius: 12px; padding: 20px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { font-size: 16px; margin: 0 0 14px; }
+  .field { margin-bottom: 12px; }
+  .field label { font-size: 12px; color: var(--text-mut); display: block; margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; background: #fdfdfb;
+  }
+  .row2 { display: flex; gap: 8px; }
+  .row2 > .field { flex: 1; }
+  .status-select { display: flex; flex-wrap: wrap; gap: 6px; }
+  .status-btn { flex: 1; min-width: 80px; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 12px; text-align: center; cursor: pointer; background: #fff; }
+  .status-btn.active { color: #fff; border-color: transparent; }
+  .checklist-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .checklist-item input[type=checkbox] { width: auto; flex: 0 0 auto; }
+  .checklist-item input[type=text] { width: auto; flex: 1; }
+  .checklist-item .rm { cursor: pointer; color: var(--text-mut); font-size: 13px; }
+  .add-item { font-size: 12px; color: var(--verde); cursor: pointer; margin-top: 2px; }
+  .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .modal-actions .btn { flex: 1; }
+  .cfg-warning { font-size: 12px; background: #fff4e5; border: 1px solid #f0c36d; color: #8a5a00; padding: 10px 12px; border-radius: 8px; margin-bottom: 14px; }
+
+  /* Painel de equipe: popup no celular, painel ao lado no computador */
+  .equipe-panel { display: none; }
+  .equipe-panel.open {
+    display: flex; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    align-items: center; justify-content: center; padding: 16px; z-index: 20;
+  }
+  .equipe-box { background: #fff; border-radius: 12px; padding: 20px; width: 100%; max-width: 400px; max-height: 90vh; overflow-y: auto; margin: auto; }
+  .equipe-box-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .equipe-box-header span.rm-func { color: var(--text-mut); cursor: pointer; font-size: 18px; }
+  @media (min-width: 860px) {
+    .modal-shell { max-width: 780px; display: flex; align-items: flex-start; gap: 16px; }
+    .modal-shell .modal { flex: 0 0 440px; }
+    .equipe-panel.open {
+      display: block; position: static; background: none; padding: 0; z-index: auto; flex: 0 0 300px;
+    }
+    .equipe-box { max-width: none; margin: 0; }
+  }
+  .equipe-item { border: 1px solid var(--border); border-radius: 8px; padding: 10px; margin-bottom: 8px; background: #fdfdfb; }
+  .equipe-item .row2 { margin-bottom: 8px; }
+  .equipe-item .item-actions { display: flex; justify-content: flex-end; gap: 10px; align-items: center; }
+  .equipe-item .rm-func { font-size: 12px; color: var(--bordo); cursor: pointer; }
+  .equipe-item .confirmar-btn { font-size: 12px; background: var(--verde); color: #fff; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  .equipe-item.confirmado { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #eef4ef; }
+  .equipe-item.confirmado .dados p { margin: 0; }
+  .equipe-item.confirmado .dados .nome { font-weight: 700; font-size: 13px; }
+  .equipe-item.confirmado .dados .meta { font-size: 11px; color: var(--text-mut); }
+  .equipe-item.confirmado .acoes { display: flex; gap: 10px; font-size: 12px; white-space: nowrap; }
+  .equipe-item.confirmado .acoes .editar { color: var(--verde); cursor: pointer; }
+
+  /* Tela de visualização (somente leitura) */
+  .view-linha { font-size: 13px; margin: 3px 0; }
+  .view-linha strong { color: var(--text-mut); font-weight: 600; }
+  .view-secao-titulo { font-size: 13px; font-weight: 700; margin: 14px 0 6px; }
+  .view-checklist-item { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; font-size: 13px; }
+  .view-func { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-size: 13px; }
+  .view-func .meta { font-size: 11px; color: var(--text-mut); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Eventos · Leão do Parque</h1>
+    <div class="sub">Controle de eventos e agenda</div>
+  </div>
+  <button class="btn primary" onclick="abrirModal()">+ Novo evento</button>
+</header>
+
+<div id="app">
+  <div id="cfgWarning" class="cfg-warning" style="display:none;">
+    Configure as chaves do Firebase no arquivo (variável <code>firebaseConfig</code>) para os dados começarem a salvar de verdade.
+  </div>
+
+  <div class="toolbar">
+    <div class="months" id="months"></div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot" style="background:var(--orcado)"></span>Orçado</span>
+    <span><span class="dot" style="background:var(--confirmado)"></span>Confirmado</span>
+    <span><span class="dot" style="background:var(--parcial)"></span>Parcial</span>
+    <span><span class="dot" style="background:var(--pago)"></span>Pago</span>
+    <span><span class="dot" style="background:var(--concluido)"></span>Concluído</span>
+  </div>
+
+  <!-- MOBILE: lista -->
+  <div class="lista" id="lista"></div>
+
+  <!-- DESKTOP: calendário -->
+  <div class="calendario" id="calendario">
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay">
+  <div class="modal-shell">
+  <div class="modal">
+    <h2 id="modalTitle">Novo evento</h2>
+
+    <div class="field">
+      <label>Status</label>
+      <div class="status-select" id="statusSelect"></div>
+    </div>
+
+    <div class="field"><label>Cliente</label><input id="fCliente" type="text" placeholder="Nome do cliente" /></div>
+    <div class="field"><label>Telefone</label><input id="fTelefone" type="text" placeholder="(00) 00000-0000" /></div>
+
+    <div class="field">
+      <label>Tipo de evento</label>
+      <select id="fTipo">
+        <option>Aniversário</option>
+        <option>Casamento</option>
+        <option>Corporativo</option>
+        <option>Formatura</option>
+        <option>Outro</option>
+      </select>
+    </div>
+
+    <div class="row2">
+      <div class="field"><label>Data</label><input id="fData" type="date" oninput="verificarConflitoData()" /></div>
+      <div class="field"><label>Horário</label><input id="fHora" type="time" /></div>
+    </div>
+
+    <div class="field"><label>Convidados</label><input id="fConvidados" type="number" min="0" /></div>
+    <div class="field" id="avisoData" style="display:none; font-size:12px; color:#8a5a00; background:#fff4e5; border:1px solid #f0c36d; border-radius:6px; padding:8px 10px;"></div>
+
+    <div class="row2">
+      <div class="field"><label>Valor por pessoa (R$)</label><input id="fValor" type="number" min="0" step="0.01" /></div>
+      <div class="field"><label>Sinal pago (R$)</label><input id="fSinal" type="number" min="0" step="0.01" /></div>
+    </div>
+
+    <div class="field">
+      <label>Checklist / observações</label>
+      <div id="checklistItens"></div>
+      <div class="add-item" onclick="adicionarItemChecklist()">+ adicionar item</div>
+    </div>
+
+    <div class="field">
+      <label>Equipe escalada</label>
+      <button type="button" class="btn" onclick="toggleEquipePanel()">Ver / adicionar equipe (<span id="equipeCount">0</span>)</button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarEvento()">Salvar evento</button>
+    </div>
+  </div>
+
+  <div class="equipe-panel" id="equipePanel">
+    <div class="equipe-box">
+      <div class="equipe-box-header">
+        <h2 style="margin:0;">Equipe escalada</h2>
+        <span class="rm-func" style="font-size:16px;" onclick="toggleEquipePanel()">✕</span>
+      </div>
+      <div id="equipeItens"></div>
+      <div class="add-item" onclick="adicionarFuncionario()">+ adicionar funcionário</div>
+    </div>
+  </div>
+  </div>
+</div>
+
+<!-- VISUALIZAÇÃO (somente leitura) -->
+<div class="overlay" id="viewOverlay">
+  <div class="modal" style="max-width:420px;">
+    <h2>Detalhes do evento</h2>
+    <div id="viewContent"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharVisualizacao()">Fechar</button>
+      <button class="btn primary" onclick="editarDoView()">Editar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase (compat SDK, mais simples de usar sem bundler) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+/* =======================================================
+   CONFIGURAÇÃO DO FIREBASE
+   Depois de criar o projeto no console do Firebase:
+   Configurações do projeto > Seus apps > SDK config
+   Cole os valores abaixo.
+======================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyAodacnox-19N0IrDu0G0v_qp5qgEv9ERg",
+  authDomain: "eventos-leao.firebaseapp.com",
+  projectId: "eventos-leao",
+  storageBucket: "eventos-leao.firebasestorage.app",
+  messagingSenderId: "89501882952",
+  appId: "1:89501882952:web:4d530b91c96aace88fd67d"
+};
+
+let db = null;
+let eventos = [];
+let usandoFirestore = false;
+
+try {
+  if (firebaseConfig.apiKey !== "COLE_AQUI") {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    usandoFirestore = true;
+  } else {
+    document.getElementById('cfgWarning').style.display = 'block';
+  }
+} catch (e) {
+  console.error("Erro ao iniciar Firebase:", e);
+  document.getElementById('cfgWarning').style.display = 'block';
+}
+
+// Dados de exemplo (usados só enquanto o Firebase não está configurado)
+if (!usandoFirestore) {
+  eventos = [
+    { id: 'ex1', cliente: 'Maria Fernandes', telefone: '', tipo: 'Casamento', data: '2026-10-10', hora: '19:00', convidados: 80, valor: 0, sinal: 0, status: 'pago', checklist: [] },
+    { id: 'ex2', cliente: 'João Ricardo', telefone: '', tipo: 'Aniversário', data: '2026-10-24', hora: '20:00', convidados: 30, valor: 0, sinal: 0, status: 'confirmado', checklist: [] }
+  ];
+}
+
+const STATUS = [
+  { id: 'orcado', label: 'Orçado', color: 'var(--orcado)', bg: '#f7e6e8', text: '#5a1620' },
+  { id: 'confirmado', label: 'Confirmado', color: 'var(--confirmado)', bg: '#faf1d9', text: '#7a5905' },
+  { id: 'parcial', label: 'Parcial', color: 'var(--parcial)', bg: '#e3eff9', text: '#154d7d' },
+  { id: 'pago', label: 'Pago', color: 'var(--pago)', bg: '#e2ede8', text: '#163828' },
+  { id: 'concluido', label: 'Concluído', color: 'var(--concluido)', bg: '#ececeb', text: '#3a3a3a' }
+];
+
+const CHECKLIST_PADRAO = [
+  'Cardápio combinado',
+  'Equipe escalada',
+  'Decoração combinada',
+  'Restrições alimentares confirmadas',
+  'Som/música confirmado'
+];
+
+const NOMES_MES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MESES_COMPLETOS = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+
+// mês/ano de referência: mês atual
+const hoje = new Date();
+let mesAtivo = hoje.getMonth();
+let anoAtivo = hoje.getFullYear();
+const mesAtualIdx = hoje.getMonth();
+const anoAtual = hoje.getFullYear();
+
+let statusEscolhido = 'orcado';
+let checklist = [];
+let equipe = [];
+let editandoId = null;
+
+function statusInfo(id) {
+  return STATUS.find(s => s.id === id) || STATUS[0];
+}
+
+function renderMonths() {
+  const wrap = document.getElementById('months');
+  wrap.innerHTML = '';
+  // meses do ano atual
+  for (let m = 0; m < 12; m++) {
+    const passado = (anoAtual === anoAtivoBase() && m < mesAtualIdx);
+    wrap.appendChild(mesChip(m, anoAtual, passado));
+  }
+  const sep = document.createElement('span');
+  sep.className = 'year-sep';
+  sep.textContent = (anoAtual + 1);
+  wrap.appendChild(sep);
+  for (let m = 0; m < 12; m++) {
+    wrap.appendChild(mesChip(m, anoAtual + 1, false));
+  }
+}
+function anoAtivoBase() { return anoAtual; }
+
+function mesChip(m, ano, passado) {
+  const el = document.createElement('div');
+  el.className = 'month-chip' + (passado ? ' disabled' : '') + ((m === mesAtivo && ano === anoAtivo) ? ' active' : '');
+  el.textContent = NOMES_MES[m];
+  el.title = passado ? 'Meses anteriores ficam disponíveis no relatório da administração' : '';
+  if (!passado) {
+    el.onclick = () => { mesAtivo = m; anoAtivo = ano; renderTudo(); };
+  }
+  return el;
+}
+
+function eventosDoMes() {
+  return eventos.filter(e => {
+    const d = new Date(e.data + 'T00:00:00');
+    return d.getMonth() === mesAtivo && d.getFullYear() === anoAtivo;
+  });
+}
+
+function renderLista() {
+  const wrap = document.getElementById('lista');
+  wrap.innerHTML = '';
+  const evs = eventosDoMes().sort((a,b) => (a.data+a.hora).localeCompare(b.data+b.hora));
+  if (evs.length === 0) {
+    wrap.innerHTML = '<p style="color:var(--text-mut); font-size:13px;">Nenhum evento neste mês.</p>';
+    return;
+  }
+  let diaAtual = null;
+  evs.forEach(e => {
+    if (e.data !== diaAtual) {
+      diaAtual = e.data;
+      const label = document.createElement('div');
+      label.className = 'dia-label';
+      label.textContent = formatarDiaLabel(e.data);
+      wrap.appendChild(label);
+    }
+    const card = document.createElement('div');
+    card.className = 'card-evento';
+    card.onclick = () => abrirVisualizacao(e.id);
+    const st = statusInfo(e.status);
+    card.style.background = st.bg;
+    card.style.color = st.text;
+    card.innerHTML = `
+      <div class="hora">${e.hora || ''}</div>
+      <div class="info">
+        <p class="nome">${escapeHtml(e.cliente)}</p>
+        <p class="meta">${e.tipo} · ${e.convidados || 0} pessoas</p>
+      </div>
+      <span class="status-pill" style="color:${st.text}">${st.label}</span>
+    `;
+    wrap.appendChild(card);
+  });
+}
+
+function formatarDiaLabel(dataStr) {
+  const d = new Date(dataStr + 'T00:00:00');
+  const dias = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  return `${dias[d.getDay()]}, ${d.getDate()} ${NOMES_MES[d.getMonth()].toLowerCase()}`;
+}
+
+function renderCalendario() {
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].forEach(d => {
+    const h = document.createElement('div');
+    h.className = 'cal-head';
+    h.textContent = d;
+    grid.appendChild(h);
+  });
+  const primeiroDia = new Date(anoAtivo, mesAtivo, 1);
+  const diasNoMes = new Date(anoAtivo, mesAtivo + 1, 0).getDate();
+  const offset = primeiroDia.getDay();
+  const evs = eventosDoMes();
+
+  for (let i = 0; i < offset; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-day';
+    grid.appendChild(cell);
+  }
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const cell = document.createElement('div');
+    const doDia = evs.filter(e => new Date(e.data + 'T00:00:00').getDate() === dia);
+    const evento = doDia[0]; // só 1 evento por dia, na prática
+
+    if (evento) {
+      const st = statusInfo(evento.status);
+      cell.className = 'cal-day tem-evento';
+      const bloco = document.createElement('div');
+      bloco.className = 'evt-bloco';
+      bloco.style.background = st.color;
+      bloco.innerHTML = `
+        <div class="evt-num">${dia}</div>
+        <div>
+          <div class="evt-nome">${escapeHtml(evento.cliente)}</div>
+          <div class="evt-detalhe">${evento.hora || ''} · ${evento.tipo}</div>
+        </div>
+      `;
+      bloco.onclick = () => abrirVisualizacao(evento.id);
+      cell.appendChild(bloco);
+    } else {
+      cell.className = 'cal-day';
+      const num = document.createElement('div');
+      num.className = 'num';
+      num.textContent = dia;
+      cell.appendChild(num);
+    }
+    grid.appendChild(cell);
+  }
+}
+
+function renderTudo() {
+  renderMonths();
+  renderLista();
+  renderCalendario();
+}
+
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s || '';
+  return div.innerHTML;
+}
+
+/* ---------- Modal / formulário ---------- */
+
+function renderStatusSelect() {
+  const wrap = document.getElementById('statusSelect');
+  wrap.innerHTML = '';
+  STATUS.forEach(s => {
+    const b = document.createElement('div');
+    b.className = 'status-btn' + (statusEscolhido === s.id ? ' active' : '');
+    b.textContent = s.label;
+    if (statusEscolhido === s.id) b.style.background = s.color;
+    b.onclick = () => { statusEscolhido = s.id; renderStatusSelect(); };
+    wrap.appendChild(b);
+  });
+}
+
+function renderChecklist() {
+  const wrap = document.getElementById('checklistItens');
+  wrap.innerHTML = '';
+  checklist.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = 'checklist-item';
+    row.innerHTML = `
+      <input type="checkbox" ${item.feito ? 'checked' : ''} onchange="checklist[${idx}].feito = this.checked" />
+      <input type="text" value="${escapeHtml(item.texto)}" placeholder="Item (ex: cardápio combinado)" oninput="checklist[${idx}].texto = this.value" />
+      <span class="rm" onclick="removerItemChecklist(${idx})">✕</span>
+    `;
+    wrap.appendChild(row);
+  });
+}
+
+function adicionarItemChecklist() {
+  checklist.push({ texto: '', feito: false });
+  renderChecklist();
+}
+function removerItemChecklist(idx) {
+  checklist.splice(idx, 1);
+  renderChecklist();
+}
+
+function renderEquipe() {
+  const wrap = document.getElementById('equipeItens');
+  wrap.innerHTML = '';
+  document.getElementById('equipeCount').textContent = equipe.filter(f => f.confirmado).length;
+
+  if (equipe.length === 0) {
+    wrap.innerHTML = '<p style="color:var(--text-mut); font-size:12px; margin:0 0 6px;">Nenhum funcionário escalado ainda.</p>';
+    return;
+  }
+  equipe.forEach((func, idx) => {
+    const item = document.createElement('div');
+
+    if (func.confirmado) {
+      item.className = 'equipe-item confirmado';
+      item.innerHTML = `
+        <div class="dados">
+          <p class="nome">${escapeHtml(func.nome)} · ${escapeHtml(func.posicao)}</p>
+          <p class="meta">Pix: ${escapeHtml(func.pix)}${func.valor ? ' · R$ ' + Number(func.valor).toFixed(2) : ''}</p>
+        </div>
+        <div class="acoes">
+          <span class="editar" onclick="editarFuncionario(${idx})">Editar</span>
+          <span class="rm-func" onclick="removerFuncionario(${idx})">Remover</span>
+        </div>
+      `;
+    } else {
+      item.className = 'equipe-item';
+      item.innerHTML = `
+        <div class="row2">
+          <input type="text" placeholder="Nome *" value="${escapeHtml(func.nome)}" oninput="equipe[${idx}].nome = this.value" />
+          <input type="text" placeholder="Posição *" value="${escapeHtml(func.posicao)}" oninput="equipe[${idx}].posicao = this.value" />
+        </div>
+        <div class="row2">
+          <input type="text" placeholder="Chave Pix *" value="${escapeHtml(func.pix)}" oninput="equipe[${idx}].pix = this.value" />
+          <input type="number" step="0.01" min="0" placeholder="Valor (opcional)" value="${func.valor || ''}" oninput="equipe[${idx}].valor = this.value" />
+        </div>
+        <div class="item-actions">
+          <span class="rm-func" onclick="removerFuncionario(${idx})">Remover</span>
+          <button type="button" class="confirmar-btn" onclick="confirmarFuncionario(${idx})">Confirmar</button>
+        </div>
+      `;
+    }
+    wrap.appendChild(item);
+  });
+}
+
+function adicionarFuncionario() {
+  equipe.push({ nome: '', posicao: '', pix: '', valor: '', confirmado: false });
+  renderEquipe();
+}
+function removerFuncionario(idx) {
+  equipe.splice(idx, 1);
+  renderEquipe();
+}
+function editarFuncionario(idx) {
+  equipe[idx].confirmado = false;
+  renderEquipe();
+}
+function confirmarFuncionario(idx) {
+  const f = equipe[idx];
+  if (!f.nome.trim() || !f.posicao.trim() || !f.pix.trim()) {
+    alert('Preencha Nome, Posição e Chave Pix antes de confirmar.');
+    return;
+  }
+  f.confirmado = true;
+  renderEquipe();
+}
+
+function toggleEquipePanel() {
+  document.getElementById('equipePanel').classList.toggle('open');
+}
+
+function abrirModal(id) {
+  editandoId = id || null;
+  const ev = id ? eventos.find(e => e.id === id) : null;
+
+  document.getElementById('modalTitle').textContent = ev ? 'Editar evento' : 'Novo evento';
+  document.getElementById('fCliente').value = ev ? ev.cliente : '';
+  document.getElementById('fTelefone').value = ev ? (ev.telefone || '') : '';
+  document.getElementById('fTipo').value = ev ? ev.tipo : 'Aniversário';
+  document.getElementById('fData').value = ev ? ev.data : '';
+  document.getElementById('fHora').value = ev ? ev.hora : '';
+  document.getElementById('fConvidados').value = ev ? ev.convidados : '';
+  document.getElementById('fValor').value = ev ? ev.valor : '';
+  document.getElementById('fSinal').value = ev ? ev.sinal : '';
+  statusEscolhido = ev ? ev.status : 'orcado';
+  if (ev && ev.checklist && ev.checklist.length) {
+    checklist = JSON.parse(JSON.stringify(ev.checklist));
+  } else if (!ev) {
+    checklist = CHECKLIST_PADRAO.map(texto => ({ texto, feito: false }));
+  } else {
+    checklist = [];
+  }
+  equipe = ev && ev.equipe ? ev.equipe.map(f => ({ ...f, confirmado: true })) : [];
+
+  renderStatusSelect();
+  renderChecklist();
+  renderEquipe();
+  document.getElementById('avisoData').style.display = 'none';
+  document.getElementById('equipePanel').classList.remove('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+function verificarConflitoData() {
+  const data = document.getElementById('fData').value;
+  const aviso = document.getElementById('avisoData');
+  if (!data) { aviso.style.display = 'none'; return; }
+  const conflito = eventos.find(e => e.data === data && e.id !== editandoId);
+  if (conflito) {
+    aviso.textContent = `Já existe um evento marcado nesse dia: ${conflito.cliente} (${conflito.hora || 'sem horário'}).`;
+    aviso.style.display = 'block';
+  } else {
+    aviso.style.display = 'none';
+  }
+}
+
+function fecharModal() {
+  document.getElementById('overlay').classList.remove('open');
+  document.getElementById('equipePanel').classList.remove('open');
+}
+
+async function salvarEvento() {
+  const cliente = document.getElementById('fCliente').value.trim();
+  const data = document.getElementById('fData').value;
+  if (!cliente || !data) {
+    alert('Preencha ao menos o nome do cliente e a data do evento.');
+    return;
+  }
+  const conflito = eventos.find(e => e.data === data && e.id !== editandoId);
+  if (conflito) {
+    alert(`Já existe um evento marcado nesse dia (${conflito.cliente}, ${conflito.hora || 'sem horário'}). Escolha outra data.`);
+    return;
+  }
+
+  const equipeConfirmada = equipe.filter(f => f.confirmado);
+
+  const evento = {
+    cliente,
+    telefone: document.getElementById('fTelefone').value.trim(),
+    tipo: document.getElementById('fTipo').value,
+    data,
+    hora: document.getElementById('fHora').value,
+    convidados: Number(document.getElementById('fConvidados').value) || 0,
+    valor: Number(document.getElementById('fValor').value) || 0,
+    sinal: Number(document.getElementById('fSinal').value) || 0,
+    status: statusEscolhido,
+    checklist: checklist.filter(i => i.texto.trim() !== ''),
+    equipe: equipeConfirmada.map(f => ({ nome: f.nome.trim(), posicao: f.posicao.trim(), pix: f.pix.trim(), valor: Number(f.valor) || 0 }))
+  };
+
+  if (usandoFirestore) {
+    if (editandoId) {
+      await db.collection('eventos').doc(editandoId).set(evento, { merge: true });
+    } else {
+      await db.collection('eventos').add(evento);
+    }
+    // a lista é atualizada pelo listener em tempo real
+  } else {
+    if (editandoId) {
+      const idx = eventos.findIndex(e => e.id === editandoId);
+      eventos[idx] = { ...evento, id: editandoId };
+    } else {
+      eventos.push({ ...evento, id: 'local-' + Date.now() });
+    }
+    renderTudo();
+  }
+
+  fecharModal();
+}
+
+/* ---------- Visualização (somente leitura) ---------- */
+
+let viewId = null;
+
+function formatarDataCompleta(dataStr) {
+  const d = new Date(dataStr + 'T00:00:00');
+  const dias = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  return `${dias[d.getDay()]}, ${d.getDate()} de ${MESES_COMPLETOS[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+function abrirVisualizacao(id) {
+  const ev = eventos.find(e => e.id === id);
+  if (!ev) return;
+  viewId = id;
+  const st = statusInfo(ev.status);
+
+  const checklistHtml = (ev.checklist || []).length
+    ? ev.checklist.map(i => `
+        <div class="view-checklist-item">
+          <span>${i.feito ? '✅' : '⬜'}</span>
+          <span style="${i.feito ? 'text-decoration:line-through; color:var(--text-mut);' : ''}">${escapeHtml(i.texto)}</span>
+        </div>`).join('')
+    : '<p style="color:var(--text-mut); font-size:13px;">Nenhum item.</p>';
+
+  const equipeHtml = (ev.equipe || []).length
+    ? ev.equipe.map(f => `
+        <div class="view-func">
+          <strong>${escapeHtml(f.nome)}</strong> · ${escapeHtml(f.posicao)}
+          <div class="meta">Pix: ${escapeHtml(f.pix)}${f.valor ? ' · R$ ' + Number(f.valor).toFixed(2) : ''}</div>
+        </div>`).join('')
+    : '<p style="color:var(--text-mut); font-size:13px;">Nenhum funcionário escalado.</p>';
+
+  document.getElementById('viewContent').innerHTML = `
+    <div style="margin-bottom:10px;">
+      <span class="status-pill" style="background:${st.color}; color:#fff;">${st.label}</span>
+    </div>
+    <p style="font-size:16px; font-weight:700; margin:0 0 2px;">${escapeHtml(ev.cliente)}</p>
+    <p style="font-size:12px; color:var(--text-mut); margin:0 0 12px;">${ev.telefone ? escapeHtml(ev.telefone) : 'Sem telefone informado'}</p>
+
+    <p class="view-linha"><strong>Tipo:</strong> ${escapeHtml(ev.tipo)}</p>
+    <p class="view-linha"><strong>Data:</strong> ${formatarDataCompleta(ev.data)}</p>
+    <p class="view-linha"><strong>Horário:</strong> ${ev.hora || 'não informado'}</p>
+    <p class="view-linha"><strong>Convidados:</strong> ${ev.convidados || 0}</p>
+
+    <p class="view-secao-titulo">Financeiro</p>
+    <p class="view-linha"><strong>Valor por pessoa:</strong> R$ ${Number(ev.valor || 0).toFixed(2)}</p>
+    <p class="view-linha"><strong>Sinal pago:</strong> R$ ${Number(ev.sinal || 0).toFixed(2)}</p>
+
+    <p class="view-secao-titulo">Checklist</p>
+    ${checklistHtml}
+
+    <p class="view-secao-titulo">Equipe escalada</p>
+    ${equipeHtml}
+  `;
+
+  document.getElementById('viewOverlay').classList.add('open');
+}
+
+function fecharVisualizacao() {
+  document.getElementById('viewOverlay').classList.remove('open');
+  viewId = null;
+}
+
+function editarDoView() {
+  const id = viewId;
+  fecharVisualizacao();
+  abrirModal(id);
+}
+
+/* ---------- Inicialização ---------- */
+
+if (usandoFirestore) {
+  db.collection('eventos').onSnapshot(snap => {
+    eventos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderTudo();
+  }, err => {
+    console.error('Erro ao ler Firestore:', err);
+  });
+} else {
+  renderTudo();
+}
+</script>
+</body>
+</html>
