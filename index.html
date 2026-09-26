@@ -34,9 +34,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
   }
   header h1 { font-size: 17px; margin: 0; font-weight: 600; }
   header .sub { font-size: 12px; opacity: 0.75; }
+  .header-actions { display: flex; align-items: center; gap: 10px; }
+  .header-tabs { display: flex; gap: 4px; background: rgba(255,255,255,0.14); padding: 3px; border-radius: 8px; }
+  .header-tab-btn { background: transparent; border: none; color: rgba(255,255,255,0.8); font-size: 13px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+  .header-tab-btn.active { background: #fff; color: var(--verde-escuro); font-weight: 600; }
   #app { max-width: 1100px; margin: 0 auto; padding: 16px; }
 
   .toolbar {
@@ -72,6 +78,24 @@
     color: var(--text);
   }
   .btn.primary { background: var(--verde); color: #fff; border-color: var(--verde); }
+
+  /* Relatório */
+  .relatorio-totais { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 18px; }
+  @media (min-width: 700px) {
+    .relatorio-totais { grid-template-columns: repeat(4, 1fr); }
+  }
+  .totais-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .totais-card .label { font-size: 11px; color: var(--text-mut); margin: 0; }
+  .totais-card .valor { font-size: 19px; font-weight: 700; margin: 3px 0 0; }
+  .relatorio-lista-titulo { font-size: 13px; font-weight: 700; margin: 0 0 8px; }
+  .relatorio-linha {
+    display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .relatorio-linha .info { flex: 1; }
+  .relatorio-linha .info .nome { font-size: 13px; font-weight: 600; margin: 0; }
+  .relatorio-linha .info .meta { font-size: 11px; color: var(--text-mut); margin: 2px 0 0; }
+  .relatorio-linha .valor-evento { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .relatorio-vazio { color: var(--text-mut); font-size: 13px; }
 
   .legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-mut); margin-bottom: 12px; flex-wrap: wrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
@@ -189,7 +213,13 @@
     <h1>Eventos · Leão do Parque</h1>
     <div class="sub">Controle de eventos e agenda</div>
   </div>
-  <button class="btn primary" onclick="abrirModal()">+ Novo evento</button>
+  <div class="header-actions">
+    <div class="header-tabs">
+      <button class="header-tab-btn" id="tabQuadro" onclick="mudarVisao('quadro')">Quadro</button>
+      <button class="header-tab-btn" id="tabRelatorio" onclick="mudarVisao('relatorio')">Relatório</button>
+    </div>
+    <button class="btn primary" onclick="abrirModal()">+ Novo evento</button>
+  </div>
 </header>
 
 <div id="app">
@@ -201,7 +231,7 @@
     <div class="months" id="months"></div>
   </div>
 
-  <div class="legend">
+  <div class="legend" id="legenda">
     <span><span class="dot" style="background:var(--orcado)"></span>Orçado</span>
     <span><span class="dot" style="background:var(--confirmado)"></span>Confirmado</span>
     <span><span class="dot" style="background:var(--parcial)"></span>Parcial</span>
@@ -216,6 +246,9 @@
   <div class="calendario" id="calendario">
     <div class="cal-grid" id="calGrid"></div>
   </div>
+
+  <!-- RELATÓRIO (mobile e desktop) -->
+  <div id="relatorio" style="display:none;"></div>
 </div>
 
 <!-- MODAL -->
@@ -373,6 +406,7 @@ let statusEscolhido = 'orcado';
 let checklist = [];
 let equipe = [];
 let editandoId = null;
+let visaoAtiva = 'quadro'; // 'quadro' | 'relatorio'
 
 function statusInfo(id) {
   return STATUS.find(s => s.id === id) || STATUS[0];
@@ -397,11 +431,12 @@ function renderMonths() {
 function anoAtivoBase() { return anoAtual; }
 
 function mesChip(m, ano, passado) {
+  const bloqueado = passado && visaoAtiva === 'quadro';
   const el = document.createElement('div');
-  el.className = 'month-chip' + (passado ? ' disabled' : '') + ((m === mesAtivo && ano === anoAtivo) ? ' active' : '');
+  el.className = 'month-chip' + (bloqueado ? ' disabled' : '') + ((m === mesAtivo && ano === anoAtivo) ? ' active' : '');
   el.textContent = NOMES_MES[m];
-  el.title = passado ? 'Meses anteriores ficam disponíveis no relatório da administração' : '';
-  if (!passado) {
+  el.title = bloqueado ? 'Meses anteriores ficam disponíveis no relatório da administração' : '';
+  if (!bloqueado) {
     el.onclick = () => { mesAtivo = m; anoAtivo = ano; renderTudo(); };
   }
   return el;
@@ -505,10 +540,69 @@ function renderCalendario() {
   }
 }
 
+function mudarVisao(v) {
+  visaoAtiva = v;
+  renderTudo();
+}
+
 function renderTudo() {
   renderMonths();
-  renderLista();
-  renderCalendario();
+
+  document.getElementById('tabQuadro').classList.toggle('active', visaoAtiva === 'quadro');
+  document.getElementById('tabRelatorio').classList.toggle('active', visaoAtiva === 'relatorio');
+
+  const ehQuadro = visaoAtiva === 'quadro';
+  document.getElementById('legenda').style.display = ehQuadro ? '' : 'none';
+  document.getElementById('lista').style.display = ehQuadro ? '' : 'none';
+  document.getElementById('calendario').style.display = ehQuadro ? '' : 'none';
+  document.getElementById('relatorio').style.display = ehQuadro ? 'none' : 'block';
+
+  if (ehQuadro) {
+    renderLista();
+    renderCalendario();
+  } else {
+    renderRelatorio();
+  }
+}
+
+function renderRelatorio() {
+  const evs = eventosDoMes().sort((a,b) => a.data.localeCompare(b.data));
+  const wrap = document.getElementById('relatorio');
+
+  const totalEventos = evs.length;
+  const totalConvidados = evs.reduce((s, e) => s + (Number(e.convidados) || 0), 0);
+  const faturamentoTotal = evs.reduce((s, e) => s + (Number(e.valor) || 0) * (Number(e.convidados) || 0), 0);
+  const ticketMedio = totalConvidados > 0 ? faturamentoTotal / totalConvidados : 0;
+
+  const fmtMoeda = v => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const linhasHtml = evs.length
+    ? evs.map(e => {
+        const st = statusInfo(e.status);
+        const valorEvento = (Number(e.valor) || 0) * (Number(e.convidados) || 0);
+        const d = new Date(e.data + 'T00:00:00');
+        return `
+          <div class="relatorio-linha">
+            <div class="info">
+              <p class="nome">${escapeHtml(e.cliente)}</p>
+              <p class="meta">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} · ${escapeHtml(e.tipo)} · ${e.convidados || 0} convidados</p>
+            </div>
+            <span class="valor-evento">${fmtMoeda(valorEvento)}</span>
+            <span class="status-pill" style="background:${st.color}; color:#fff;">${st.label}</span>
+          </div>`;
+      }).join('')
+    : '<p class="relatorio-vazio">Nenhum evento neste mês.</p>';
+
+  wrap.innerHTML = `
+    <div class="relatorio-totais">
+      <div class="totais-card"><p class="label">Eventos no mês</p><p class="valor">${totalEventos}</p></div>
+      <div class="totais-card"><p class="label">Faturamento total</p><p class="valor">${fmtMoeda(faturamentoTotal)}</p></div>
+      <div class="totais-card"><p class="label">Ticket médio / convidado</p><p class="valor">${fmtMoeda(ticketMedio)}</p></div>
+      <div class="totais-card"><p class="label">Total de convidados</p><p class="valor">${totalConvidados}</p></div>
+    </div>
+    <p class="relatorio-lista-titulo">Detalhamento</p>
+    ${linhasHtml}
+  `;
 }
 
 function escapeHtml(s) {
