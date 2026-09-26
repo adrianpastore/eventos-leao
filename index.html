@@ -113,12 +113,17 @@
   .cal-mobile-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
   .cal-mobile-head { font-size: 10px; color: var(--text-mut); text-align: center; padding: 4px 0; }
   .cal-mobile-day {
-    aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    border-radius: 10px; font-size: 13px; color: var(--text);
+    position: relative; aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    border-radius: 10px; font-size: 13px; color: var(--text); overflow: hidden;
   }
-  .cal-mobile-day.tem-evento { cursor: pointer; font-weight: 600; }
-  .cal-mobile-day.hoje .num { color: var(--verde); font-weight: 700; text-decoration: underline; }
-  .cal-mobile-day .dot-evento { width: 5px; height: 5px; border-radius: 50%; margin-top: 3px; }
+  .cal-mobile-day .faixa-evento {
+    position: absolute; left: 2px; right: 2px; top: 24%; height: 52%; border-radius: 6px; z-index: 0;
+  }
+  .cal-mobile-day .num { position: relative; z-index: 1; }
+  .cal-mobile-day.tem-evento { cursor: pointer; }
+  .cal-mobile-day.tem-evento .num { color: #fff; font-weight: 700; }
+  .cal-mobile-day.hoje .num { text-decoration: underline; }
+  .cal-mobile-day.hoje:not(.tem-evento) .num { color: var(--verde); font-weight: 700; }
   @media (min-width: 860px) {
     .cal-mobile { display: none !important; }
   }
@@ -641,7 +646,7 @@ function renderCalMobile() {
     const evento = evs.find(e => e.data === dataStr);
     const cell = document.createElement('div');
     cell.className = 'cal-mobile-day' + (evento ? ' tem-evento' : '') + (dataStr === hojeStr ? ' hoje' : '');
-    cell.innerHTML = `<span class="num">${dia}</span>` + (evento ? `<span class="dot-evento" style="background:${statusInfo(evento.status).color}"></span>` : '');
+    cell.innerHTML = (evento ? `<span class="faixa-evento" style="background:${statusInfo(evento.status).color}"></span>` : '') + `<span class="num">${dia}</span>`;
     if (evento) cell.onclick = () => abrirVisualizacao(evento.id);
     grid.appendChild(cell);
   }
