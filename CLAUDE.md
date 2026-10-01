@@ -67,6 +67,18 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - Todo texto vindo do usuário passa por `escapeHtml()` antes de ir para `innerHTML`, inclusive o `tipo`, que agora pode ser digitado.
 - `salvarEvento` usa `set(..., { merge: true })`, então campos que não estão no formulário (como `contrato`) são preservados ao editar.
 
+## Próximo passo (prioridade, combinado em 01/10/2026 para 02/10)
+
+**Login com PIN de verdade.** Um PIN conferido só na página não protege: o código e a config do Firebase são públicos, então dá para ler o Firestore direto. Plano aprovado em conversa:
+- Usar o Firebase Auth (e-mail/senha, grátis) com **uma conta única do restaurante**. O usuário digita só o PIN, e o app faz `signInWithEmailAndPassword(EMAIL_FIXO, pin)`. O PIN fica só no Firebase, nunca no código.
+- O PIN precisa de no mínimo 6 caracteres (exigência do Firebase). O Firebase já bloqueia quem erra muitas vezes.
+- O login fica salvo no aparelho (persistência padrão do Auth). Botão "Sair" no cabeçalho.
+- Regras do Firestore: `allow read, write: if request.auth != null;` em `eventos/{id}` e `eventos/{id}/contratoPartes/{parte}`.
+- O usuário faz no console (guiar passo a passo): ativar o provedor E-mail/senha, criar o usuário com o PIN e colar as regras. A ordem importa: publicar o app com login **antes** de trocar as regras, senão o site atual para de funcionar.
+- Limitações já explicadas ao usuário: PIN compartilhado (sem saber quem fez o quê) e, para revogar acesso, é preciso trocar o PIN.
+
 ## Ideias para depois
 
-- Login, se os contratos e os dados da equipe precisarem ficar privados.
+- Exportar o relatório para planilha.
+- Instalar no celular como app (PWA).
+- Mais de um evento por dia; gerar contrato a partir de um modelo.
