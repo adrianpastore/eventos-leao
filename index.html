@@ -241,6 +241,30 @@
   .contrato-acoes .btn { flex: 1; padding: 6px 8px; font-size: 12px; }
   .contrato-acoes .excluir { color: var(--bordo); }
   .contrato-status { font-size: 12px; color: var(--text-mut); margin: 0; }
+
+  /* Filtros */
+  .filtros { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filtros input, .filtros select {
+    flex: 1; min-width: 150px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-family: inherit; background: #fff;
+  }
+
+  /* Eventos que já passaram e não foram concluídos */
+  .pendentes { background: #fff4e5; border: 1px solid #f0c36d; border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: #8a5a00; }
+  .pendentes summary { cursor: pointer; font-weight: 600; }
+  .pendente-linha { display: flex; align-items: center; gap: 8px; padding: 8px 0 0; }
+  .pendente-linha .info { flex: 1; cursor: pointer; }
+  .pendente-linha .info .meta { font-size: 11px; opacity: 0.8; }
+  .pendente-linha .btn { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
+
+  .aviso-offline { font-size: 12px; background: #ececeb; border: 1px solid #c8c6bd; color: #3a3a3a; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; }
+  .falta-receber { color: var(--bordo); font-weight: 600; }
+  .whats-link { display: inline-block; margin-left: 8px; font-size: 12px; color: #fff; background: #25a244; border-radius: 5px; padding: 2px 8px; text-decoration: none; }
+  .excluir-evento { margin-top: 14px; text-align: center; font-size: 12px; color: var(--bordo); cursor: pointer; }
+  .relatorio-totais { grid-template-columns: repeat(2, 1fr); }
+  @media (min-width: 700px) {
+    .relatorio-totais { grid-template-columns: repeat(3, 1fr); }
+  }
 </style>
 </head>
 <body>
@@ -264,8 +288,26 @@
     Configure as chaves do Firebase no arquivo (variável <code>firebaseConfig</code>) para os dados começarem a salvar de verdade.
   </div>
 
+  <div id="avisoOffline" class="aviso-offline" style="display:none;">
+    📡 Sem internet. O que for salvo agora fica guardado neste aparelho e é enviado sozinho quando a conexão voltar.
+  </div>
+
+  <details class="pendentes" id="pendentes" style="display:none;"></details>
+
   <div class="toolbar">
     <div class="months" id="months"></div>
+  </div>
+
+  <div class="filtros">
+    <input id="filtroBusca" type="search" placeholder="🔍 Buscar cliente" oninput="renderTudo()" />
+    <select id="filtroTipo" onchange="renderTudo()">
+      <option value="">Todos os tipos</option>
+      <option>Aniversário</option>
+      <option>Casamento</option>
+      <option>Corporativo</option>
+      <option>Formatura</option>
+      <option value="Outro">Outros</option>
+    </select>
   </div>
 
   <div class="legend" id="legenda">
@@ -367,8 +409,9 @@
 
     <div class="modal-actions">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarEvento()">Salvar evento</button>
+      <button class="btn primary" id="btnSalvar" onclick="salvarEvento()">Salvar evento</button>
     </div>
+    <div class="excluir-evento" id="btnExcluirEvento" onclick="excluirEvento()">Excluir evento</div>
   </div>
 
   <div class="equipe-panel" id="equipePanel">
@@ -391,6 +434,7 @@
     <div id="viewContent"></div>
     <div class="modal-actions">
       <button class="btn" onclick="fecharVisualizacao()">Fechar</button>
+      <button class="btn" onclick="imprimirEvento()">🖨 Imprimir</button>
       <button class="btn primary" onclick="editarDoView()">Editar</button>
     </div>
   </div>
@@ -426,6 +470,8 @@ try {
   if (firebaseConfig.apiKey !== "COLE_AQUI") {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    // guarda os dados no aparelho: sem internet, o app abre e as alterações ficam na fila até a conexão voltar
+    db.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('Modo offline indisponível:', e.code));
     usandoFirestore = true;
   } else {
     document.getElementById('cfgWarning').style.display = 'block';
@@ -487,6 +533,40 @@ function alternarVisaoMobile(v) {
   renderTudo();
 }
 
+function atualizarAvisoOffline() {
+  document.getElementById('avisoOffline').style.display = navigator.onLine ? 'none' : 'block';
+}
+window.addEventListener('online', atualizarAvisoOffline);
+window.addEventListener('offline', atualizarAvisoOffline);
+atualizarAvisoOffline();
+
+// Espera uma gravação no Firestore. Sem internet ela não falha, só fica na fila do aparelho
+// e a promessa não termina; por isso, depois de alguns segundos, devolve 'pendente'.
+async function aguardarGravacao(promessa) {
+  const resultado = await Promise.race([
+    promessa.then(() => 'ok'),
+    new Promise(r => setTimeout(() => r('pendente'), 8000))
+  ]);
+  if (resultado === 'pendente') {
+    promessa.catch(e => {
+      console.error('Gravação pendente falhou:', e);
+      alert('Uma alteração feita sem internet não pôde ser salva. Confira os dados e tente de novo.');
+    });
+  }
+  return resultado;
+}
+
+const AVISO_PENDENTE = 'Sem conexão com o servidor. A alteração ficou guardada neste aparelho e será enviada sozinha quando a internet voltar.';
+
+function hojeStr() {
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+}
+
+function totalEvento(e) { return (Number(e.valor) || 0) * (Number(e.convidados) || 0); }
+function faltaReceber(e) { return Math.max(0, totalEvento(e) - (Number(e.sinal) || 0)); }
+function custoEquipe(e) { return (e.equipe || []).reduce((s, f) => s + (Number(f.valor) || 0), 0); }
+function fmtMoeda(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
 function statusInfo(id) {
   return STATUS.find(s => s.id === id) || STATUS[0];
 }
@@ -534,11 +614,29 @@ function mesChip(m, ano, passado) {
   return el;
 }
 
+function semAcento(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+// "Outros" no filtro = todo tipo fora da lista fixa (inclusive os digitados em "Outro", ex: Batizado)
+function passaNoFiltro(e) {
+  const busca = semAcento(document.getElementById('filtroBusca').value.trim());
+  const tipo = document.getElementById('filtroTipo').value;
+  if (busca && !semAcento(e.cliente).includes(busca)) return false;
+  if (tipo === 'Outro') return !TIPOS_FIXOS.includes(e.tipo) || e.tipo === 'Outro';
+  if (tipo) return e.tipo === tipo;
+  return true;
+}
+
 function eventosDoMes() {
   return eventos.filter(e => {
     const d = new Date(e.data + 'T00:00:00');
-    return d.getMonth() === mesAtivo && d.getFullYear() === anoAtivo;
+    return d.getMonth() === mesAtivo && d.getFullYear() === anoAtivo && passaNoFiltro(e);
   });
+}
+
+function filtroAtivo() {
+  return document.getElementById('filtroBusca').value.trim() !== '' || document.getElementById('filtroTipo').value !== '';
 }
 
 function renderLista() {
@@ -546,7 +644,7 @@ function renderLista() {
   wrap.innerHTML = '';
   const evs = eventosDoMes().sort((a,b) => (a.data+a.hora).localeCompare(b.data+b.hora));
   if (evs.length === 0) {
-    wrap.innerHTML = '<p style="color:var(--text-mut); font-size:13px;">Nenhum evento neste mês.</p>';
+    wrap.innerHTML = `<p style="color:var(--text-mut); font-size:13px;">${filtroAtivo() ? 'Nenhum evento neste mês com esse filtro.' : 'Nenhum evento neste mês.'}</p>`;
     return;
   }
   let diaAtual = null;
@@ -654,12 +752,59 @@ function renderTudo() {
   document.getElementById('calendario').style.display = ehQuadro ? '' : 'none';
   document.getElementById('relatorio').style.display = ehQuadro ? 'none' : 'block';
 
+  renderPendentes(ehQuadro);
   if (ehQuadro) {
     renderLista();
     renderCalendario();
     renderCalMobile();
   } else {
     renderRelatorio();
+  }
+}
+
+// Eventos com data passada que ainda não foram marcados como Concluído.
+// Os meses passados ficam bloqueados no Quadro, então este aviso é o caminho para resolvê-los.
+function renderPendentes(mostrar) {
+  const box = document.getElementById('pendentes');
+  const pend = eventos
+    .filter(e => e.data && e.data < hojeStr() && e.status !== 'concluido')
+    .sort((a, b) => a.data.localeCompare(b.data));
+  if (!mostrar || pend.length === 0) { box.style.display = 'none'; return; }
+  const aberto = box.open;
+  box.style.display = '';
+  box.innerHTML = `
+    <summary>⚠ ${pend.length === 1 ? '1 evento já passou e não está' : pend.length + ' eventos já passaram e não estão'} como Concluído</summary>
+    ${pend.map(e => {
+      const falta = faltaReceber(e);
+      return `
+      <div class="pendente-linha">
+        <div class="info" onclick="abrirVisualizacao('${e.id}')">
+          <div>${escapeHtml(e.cliente)}</div>
+          <div class="meta">${formatarDiaLabel(e.data)} · ${statusInfo(e.status).label}${falta > 0 ? ' · falta receber ' + fmtMoeda(falta) : ''}</div>
+        </div>
+        <button class="btn" onclick="marcarConcluido('${e.id}')">Marcar concluído</button>
+      </div>`;
+    }).join('')}
+  `;
+  box.open = aberto;
+}
+
+async function marcarConcluido(id) {
+  const ev = eventos.find(e => e.id === id);
+  if (!ev) return;
+  const falta = faltaReceber(ev);
+  if (falta > 0 && !confirm(`${ev.cliente} ainda tem ${fmtMoeda(falta)} a receber pelo cadastro. Marcar como concluído mesmo assim?`)) return;
+  if (usandoFirestore) {
+    try {
+      const r = await aguardarGravacao(db.collection('eventos').doc(id).update({ status: 'concluido' }));
+      if (r === 'pendente') alert(AVISO_PENDENTE);
+    } catch (e) {
+      console.error('Erro ao marcar concluído:', e);
+      alert('Não foi possível atualizar o evento. Tente de novo.');
+    }
+  } else {
+    ev.status = 'concluido';
+    renderTudo();
   }
 }
 
@@ -677,7 +822,6 @@ function renderCalMobile() {
   const diasNoMes = new Date(anoAtivo, mesAtivo + 1, 0).getDate();
   const offset = primeiroDia.getDay();
   const evs = eventosDoMes();
-  const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
 
   for (let i = 0; i < offset; i++) {
     grid.appendChild(document.createElement('div'));
@@ -686,7 +830,7 @@ function renderCalMobile() {
     const dataStr = `${anoAtivo}-${String(mesAtivo + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
     const evento = evs.find(e => e.data === dataStr);
     const cell = document.createElement('div');
-    cell.className = 'cal-mobile-day' + (evento ? ' tem-evento' : '') + (dataStr === hojeStr ? ' hoje' : '');
+    cell.className = 'cal-mobile-day' + (evento ? ' tem-evento' : '') + (dataStr === hojeStr() ? ' hoje' : '');
     cell.innerHTML = (evento ? `<span class="faixa-evento" style="background:${statusInfo(evento.status).color}"></span>` : '') + `<span class="num">${dia}</span>`;
     if (evento) cell.onclick = () => abrirVisualizacao(evento.id);
     grid.appendChild(cell);
@@ -699,32 +843,40 @@ function renderRelatorio() {
 
   const totalEventos = evs.length;
   const totalConvidados = evs.reduce((s, e) => s + (Number(e.convidados) || 0), 0);
-  const faturamentoTotal = evs.reduce((s, e) => s + (Number(e.valor) || 0) * (Number(e.convidados) || 0), 0);
+  const faturamentoTotal = evs.reduce((s, e) => s + totalEvento(e), 0);
   const ticketMedio = totalConvidados > 0 ? faturamentoTotal / totalConvidados : 0;
-
-  const fmtMoeda = v => 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalFalta = evs.reduce((s, e) => s + faltaReceber(e), 0);
+  const totalEquipe = evs.reduce((s, e) => s + custoEquipe(e), 0);
 
   const linhasHtml = evs.length
     ? evs.map(e => {
         const st = statusInfo(e.status);
-        const valorEvento = (Number(e.valor) || 0) * (Number(e.convidados) || 0);
         const d = new Date(e.data + 'T00:00:00');
+        const falta = faltaReceber(e);
+        const equipeCusto = custoEquipe(e);
+        const extras = [
+          falta > 0 ? `<span class="falta-receber">falta ${fmtMoeda(falta)}</span>` : '',
+          equipeCusto > 0 ? `equipe ${fmtMoeda(equipeCusto)}` : ''
+        ].filter(Boolean).join(' · ');
         return `
           <div class="relatorio-linha">
             <div class="info">
               <p class="nome">${escapeHtml(e.cliente)}</p>
               <p class="meta">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} · ${escapeHtml(e.tipo)} · ${e.convidados || 0} convidados</p>
+              ${extras ? `<p class="meta">${extras}</p>` : ''}
             </div>
-            <span class="valor-evento">${fmtMoeda(valorEvento)}</span>
+            <span class="valor-evento">${fmtMoeda(totalEvento(e))}</span>
             <span class="status-pill" style="background:${st.color}; color:#fff;">${st.label}</span>
           </div>`;
       }).join('')
-    : '<p class="relatorio-vazio">Nenhum evento neste mês.</p>';
+    : `<p class="relatorio-vazio">${filtroAtivo() ? 'Nenhum evento neste mês com esse filtro.' : 'Nenhum evento neste mês.'}</p>`;
 
   wrap.innerHTML = `
     <div class="relatorio-totais">
       <div class="totais-card"><p class="label">Eventos no mês</p><p class="valor">${totalEventos}</p></div>
       <div class="totais-card"><p class="label">Faturamento total</p><p class="valor">${fmtMoeda(faturamentoTotal)}</p></div>
+      <div class="totais-card"><p class="label">Falta receber</p><p class="valor falta-receber">${fmtMoeda(totalFalta)}</p></div>
+      <div class="totais-card"><p class="label">Custo da equipe</p><p class="valor">${fmtMoeda(totalEquipe)}</p></div>
       <div class="totais-card"><p class="label">Ticket médio / convidado</p><p class="valor">${fmtMoeda(ticketMedio)}</p></div>
       <div class="totais-card"><p class="label">Total de convidados</p><p class="valor">${totalConvidados}</p></div>
     </div>
@@ -882,6 +1034,7 @@ function abrirModal(id) {
   renderChecklist();
   renderEquipe();
   document.getElementById('avisoData').style.display = 'none';
+  document.getElementById('btnExcluirEvento').style.display = ev ? '' : 'none';
   document.getElementById('equipePanel').classList.remove('open');
   document.getElementById('overlay').classList.add('open');
   renderContratos();
@@ -952,11 +1105,30 @@ async function salvarEvento() {
 
   let idSalvo = editandoId;
   if (usandoFirestore) {
-    if (editandoId) {
-      await db.collection('eventos').doc(editandoId).set(evento, { merge: true });
-    } else {
-      const ref = await db.collection('eventos').add(evento);
-      idSalvo = ref.id;
+    // doc() sem id já gera o id na hora, mesmo sem internet (o add() só devolveria o id depois do servidor responder)
+    const ref = editandoId ? db.collection('eventos').doc(editandoId) : db.collection('eventos').doc();
+    idSalvo = ref.id;
+    const btn = document.getElementById('btnSalvar');
+    btn.disabled = true;
+    btn.textContent = 'Salvando…';
+    let resultado;
+    try {
+      resultado = await aguardarGravacao(ref.set(evento, { merge: true }));
+    } catch (e) {
+      console.error('Erro ao salvar evento:', e);
+      alert('Não foi possível salvar o evento. Confira a internet e tente de novo — os dados continuam no formulário.');
+      return;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Salvar evento';
+    }
+    if (resultado === 'pendente') {
+      let msg = AVISO_PENDENTE;
+      if (contratoPendente) {
+        msg += '\n\nO contrato não foi enviado: anexe de novo quando a internet voltar.';
+        contratoPendente = null;
+      }
+      alert(msg);
     }
     // a lista é atualizada pelo listener em tempo real
   } else {
@@ -977,6 +1149,30 @@ async function salvarEvento() {
     await enviarContrato(idSalvo, arquivo);
   }
 
+  fecharModal();
+}
+
+async function excluirEvento() {
+  const ev = eventos.find(e => e.id === editandoId);
+  if (!ev) return;
+  const aviso = ev.contrato ? '\n\nO contrato anexado também será apagado.' : '';
+  if (!confirm(`Excluir o evento de ${ev.cliente} (${formatarDiaLabel(ev.data)})? Não dá para desfazer.${aviso}`)) return;
+
+  if (usandoFirestore) {
+    try {
+      const r = await aguardarGravacao(db.collection('eventos').doc(ev.id).delete());
+      if (ev.contrato) apagarPedacos(ev.id, ev.contrato).catch(e => console.warn('Pedaços do contrato não apagados:', e));
+      if (r === 'pendente') alert(AVISO_PENDENTE);
+    } catch (e) {
+      console.error('Erro ao excluir evento:', e);
+      alert('Não foi possível excluir o evento. Tente de novo.');
+      return;
+    }
+  } else {
+    eventos = eventos.filter(e => e.id !== ev.id);
+    delete contratosLocais[ev.id];
+    renderTudo();
+  }
   fecharModal();
 }
 
@@ -1017,7 +1213,7 @@ function abrirVisualizacao(id) {
       <span class="status-pill" style="background:${st.color}; color:#fff;">${st.label}</span>
     </div>
     <p style="font-size:16px; font-weight:700; margin:0 0 2px;">${escapeHtml(ev.cliente)}</p>
-    <p style="font-size:12px; color:var(--text-mut); margin:0 0 12px;">${ev.telefone ? escapeHtml(ev.telefone) : 'Sem telefone informado'}</p>
+    <p style="font-size:12px; color:var(--text-mut); margin:0 0 12px;">${ev.telefone ? escapeHtml(ev.telefone) : 'Sem telefone informado'}${linkWhatsApp(ev.telefone)}</p>
 
     <p class="view-linha"><strong>Tipo:</strong> ${escapeHtml(ev.tipo)}</p>
     <p class="view-linha"><strong>Cardápio:</strong> ${ev.cardapio ? escapeHtml(ev.cardapio) : 'a definir'}</p>
@@ -1026,8 +1222,11 @@ function abrirVisualizacao(id) {
     <p class="view-linha"><strong>Convidados:</strong> ${ev.convidados || 0}</p>
 
     <p class="view-secao-titulo">Financeiro</p>
-    <p class="view-linha"><strong>Valor por pessoa:</strong> R$ ${Number(ev.valor || 0).toFixed(2)}</p>
-    <p class="view-linha"><strong>Sinal pago:</strong> R$ ${Number(ev.sinal || 0).toFixed(2)}</p>
+    <p class="view-linha"><strong>Valor por pessoa:</strong> ${fmtMoeda(ev.valor || 0)}</p>
+    <p class="view-linha"><strong>Total do evento:</strong> ${fmtMoeda(totalEvento(ev))}</p>
+    <p class="view-linha"><strong>Sinal pago:</strong> ${fmtMoeda(ev.sinal || 0)}</p>
+    <p class="view-linha"><strong>Falta receber:</strong> ${faltaReceber(ev) > 0 ? `<span class="falta-receber">${fmtMoeda(faltaReceber(ev))}</span>` : 'nada'}</p>
+    <p class="view-linha"><strong>Custo da equipe:</strong> ${fmtMoeda(custoEquipe(ev))}</p>
 
     <p class="view-secao-titulo">Checklist</p>
     ${checklistHtml}
@@ -1041,6 +1240,54 @@ function abrirVisualizacao(id) {
   renderContratos();
 
   document.getElementById('viewOverlay').classList.add('open');
+}
+
+// Monta o link do WhatsApp a partir do telefone digitado; sem DDI, assume Brasil (55)
+function linkWhatsApp(telefone) {
+  let num = String(telefone || '').replace(/\D/g, '');
+  if (num.length < 10) return '';
+  if (num.length <= 11) num = '55' + num;
+  return `<a class="whats-link" href="https://wa.me/${num}" target="_blank" rel="noopener">💬 WhatsApp</a>`;
+}
+
+// Folha do evento para a cozinha/equipe: sem valores nem chaves Pix
+function imprimirEvento() {
+  const ev = eventos.find(e => e.id === viewId);
+  if (!ev) return;
+  const aba = window.open('', '_blank');
+  if (!aba) { alert('O navegador bloqueou a nova aba. Libere pop-ups para este site e tente de novo.'); return; }
+  const linha = (rotulo, valor) => `<tr><th>${rotulo}</th><td>${valor}</td></tr>`;
+  const checklistHtml = (ev.checklist || []).length
+    ? '<ul>' + ev.checklist.map(i => `<li>${i.feito ? '☑' : '☐'} ${escapeHtml(i.texto)}</li>`).join('') + '</ul>'
+    : '<p class="mut">Nenhum item.</p>';
+  const equipeHtml = (ev.equipe || []).length
+    ? '<ul>' + ev.equipe.map(f => `<li><strong>${escapeHtml(f.nome)}</strong> · ${escapeHtml(f.posicao)}</li>`).join('') + '</ul>'
+    : '<p class="mut">Ninguém escalado.</p>';
+  aba.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Evento - ${escapeHtml(ev.cliente)}</title>
+    <style>
+      body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; margin: 24px; }
+      h1 { font-size: 20px; margin: 0 0 2px; } .sub { color: #555; font-size: 13px; margin: 0 0 16px; }
+      h2 { font-size: 15px; margin: 18px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+      table { border-collapse: collapse; font-size: 14px; } th { text-align: left; color: #555; font-weight: 600; padding: 3px 14px 3px 0; } td { padding: 3px 0; }
+      ul { margin: 0; padding-left: 0; list-style: none; font-size: 14px; } li { padding: 3px 0; } .mut { color: #777; font-size: 13px; }
+      @media print { body { margin: 0; } }
+    </style></head><body>
+    <h1>${escapeHtml(ev.cliente)}</h1>
+    <p class="sub">Leão do Parque · ${escapeHtml(ev.tipo)}</p>
+    <table>
+      ${linha('Data', formatarDataCompleta(ev.data))}
+      ${linha('Horário', ev.hora || 'não informado')}
+      ${linha('Convidados', ev.convidados || 0)}
+      ${linha('Cardápio', ev.cardapio ? escapeHtml(ev.cardapio) : 'a definir')}
+      ${linha('Telefone', ev.telefone ? escapeHtml(ev.telefone) : '—')}
+    </table>
+    <h2>Checklist / observações</h2>${checklistHtml}
+    <h2>Equipe escalada</h2>${equipeHtml}
+    <script>window.onload = () => window.print();<\/script>
+    </body></html>`);
+  aba.document.close();
 }
 
 function fecharVisualizacao() {
@@ -1127,6 +1374,10 @@ async function contratoEscolhido(input) {
   }
   if (arquivo.size > CONTRATO_MAX_BYTES) {
     alert(`O PDF tem ${fmtTamanho(arquivo.size)}. O limite é ${fmtTamanho(CONTRATO_MAX_BYTES)}.`);
+    return;
+  }
+  if (contratoAlvoId && usandoFirestore && !navigator.onLine) {
+    alert('Sem internet. Anexe o contrato quando a conexão voltar.');
     return;
   }
   if (!contratoAlvoId) {

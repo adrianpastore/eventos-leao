@@ -19,8 +19,12 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
   - Celular: alterna Lista / Calendário (a preferência fica no `localStorage`).
   - Computador (≥ 860px): calendário em grade.
   - Ao abrir, o carrossel rola até o mês atual (no celular ele ficava escondido no fim). Depois disso, mantém a posição que o usuário deixou.
-- **Relatório**: totais do mês (eventos, faturamento, ticket médio, convidados) e detalhamento.
-- **Modal do evento** (criar/editar) e **detalhes** (somente leitura, com botão Editar).
+- **Filtros** (Quadro e Relatório): busca por cliente, sem diferenciar acentos, e filtro por tipo. "Outros" pega todo tipo fora de `TIPOS_FIXOS`. Valem só para o mês selecionado.
+- **Pendentes**: aviso no topo do Quadro com os eventos de data passada que não estão como Concluído, com o botão "Marcar concluído" (pede confirmação se ainda falta receber). Como os meses passados ficam bloqueados no Quadro, esse aviso é o caminho para chegar neles.
+- **Relatório**: totais do mês (eventos, faturamento, falta receber, custo da equipe, ticket médio, convidados) e detalhamento.
+- **Modal do evento** (criar/editar, com "Excluir evento" ao editar, que também apaga o contrato) e **detalhes** (somente leitura, com Editar e Imprimir).
+- **Detalhes**: total do evento, falta receber, custo da equipe e botão de WhatsApp (`wa.me`, com 55 na frente quando o número não tem DDI).
+- **Imprimir**: folha para a cozinha e a equipe numa aba nova (data, horário, convidados, cardápio, checklist, equipe), **sem valores nem chaves Pix**.
 - Um evento por dia: o app avisa e bloqueia ao salvar outro evento numa data já ocupada.
 
 ## Dados (`eventos/{id}`)
@@ -31,10 +35,10 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 | `tipo` | Aniversário, Casamento, Corporativo, Formatura ou Outro. Em **Outro** abre um campo de texto e o tipo **é salvo com o texto digitado** (ex.: "Batizado"); vazio vira "Outro". Um filtro futuro deve tratar como "Outro" todo tipo fora de `TIPOS_FIXOS`. |
 | `cardapio` | `""` (a definir), Galeto 1, Galeto 2, Galeto 3, Carreteiro, Chapa completa. Escolhido num select, como o tipo; **não** faz mais parte do checklist. |
 | `data`, `hora` | `data` obrigatória (`AAAA-MM-DD`) |
-| `convidados`, `valor` (por pessoa), `sinal` | faturamento do evento = `valor × convidados` |
+| `convidados`, `valor` (por pessoa), `sinal` | total = `valor × convidados`; falta receber = total − `sinal` (só conta o sinal: o status "Pago" não zera o saldo) |
 | `status` | orcado, confirmado, parcial, pago, concluido (cada um com sua cor) |
 | `checklist` | `[{ texto, feito }]`; padrão: Equipe escalada, Decoração combinada, Restrições alimentares confirmadas, Som/música confirmado |
-| `equipe` | `[{ nome, posicao, pix, valor }]`; nome, posição e Pix são obrigatórios para confirmar |
+| `equipe` | `[{ nome, posicao, pix, valor }]`; nome, posição e Pix são obrigatórios para confirmar; custo da equipe = soma dos `valor` |
 | `contrato` | ver abaixo |
 
 Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o campo `cardapio`. Isso é esperado.
@@ -50,6 +54,14 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - Num evento existente, Substituir e Excluir valem na hora, mesmo que o modal seja cancelado.
 - As regras do Firestore precisam liberar a subcoleção `contratoPartes`. Ainda não foi testado com o banco real.
 
+## Sem internet
+
+- `enablePersistence` guarda os dados no aparelho. Sem internet, o app abre com o que já tinha e as gravações ficam na fila até a conexão voltar.
+- Uma barra cinza avisa quando o aparelho está offline.
+- Toda gravação passa por `aguardarGravacao()`. Erro (ex.: regra do Firestore negando) → alerta, e o modal continua aberto com os dados. Se depois de 8 s o servidor não respondeu → `'pendente'`: o app avisa que ficou guardado no aparelho e fecha.
+- Evento novo usa `collection.doc()` + `set` (o id sai na hora, mesmo offline), não `add()`.
+- Contrato não é enviado sem internet (seria grande demais para a fila). O app pede para anexar de novo depois.
+
 ## Cuidados no código
 
 - Todo texto vindo do usuário passa por `escapeHtml()` antes de ir para `innerHTML`, inclusive o `tipo`, que agora pode ser digitado.
@@ -57,5 +69,4 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 
 ## Ideias para depois
 
-- Filtro por tipo de evento.
 - Login, se os contratos e os dados da equipe precisarem ficar privados.
