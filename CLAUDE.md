@@ -32,7 +32,7 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 | Campo | Observação |
 |---|---|
 | `cliente`, `telefone` | `cliente` é obrigatório |
-| `tipo` | Aniversário, Casamento, Corporativo, Formatura ou Outro. Em **Outro** abre um campo de texto e o tipo **é salvo com o texto digitado** (ex.: "Batizado"); vazio vira "Outro". Um filtro futuro deve tratar como "Outro" todo tipo fora de `TIPOS_FIXOS`. |
+| `tipo` | Aniversário, Casamento, Corporativo, Formatura ou Outro. Em **Outro** abre um campo de texto e o tipo **é salvo com o texto digitado** (ex.: "Batizado"); vazio vira "Outro". O filtro "Outros" pega todo tipo fora de `TIPOS_FIXOS`. |
 | `cardapio` | `""` (a definir), Galeto 1, Galeto 2, Galeto 3, Carreteiro, Chapa completa. Escolhido num select, como o tipo; **não** faz mais parte do checklist. |
 | `data`, `hora` | `data` obrigatória (`AAAA-MM-DD`) |
 | `convidados`, `valor` (por pessoa), `sinal` | total = `valor × convidados`; falta receber = total − `sinal` (só conta o sinal: o status "Pago" não zera o saldo) |
