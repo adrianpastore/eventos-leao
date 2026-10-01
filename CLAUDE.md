@@ -52,7 +52,7 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - Substituir grava a versão nova (em lote, junto com o `contrato`) **antes** de apagar a antiga.
 - Num evento novo, o PDF escolhido fica pendente e é enviado logo depois do primeiro salvamento.
 - Num evento existente, Substituir e Excluir valem na hora, mesmo que o modal seja cancelado.
-- As regras do Firestore precisam liberar a subcoleção `contratoPartes`. Ainda não foi testado com o banco real.
+- As regras do Firestore precisam liberar a subcoleção `contratoPartes` (testado no site publicado em 01/10/2026: salvar, excluir e anexar contrato funcionaram).
 
 ## Sem internet
 
