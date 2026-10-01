@@ -232,6 +232,15 @@
   .view-checklist-item { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; font-size: 13px; }
   .view-func { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-size: 13px; }
   .view-func .meta { font-size: 11px; color: var(--text-mut); }
+
+  /* Contrato anexado */
+  .contrato-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: #fdfdfb; }
+  .contrato-nome { font-size: 13px; font-weight: 600; margin: 0 0 8px; word-break: break-all; }
+  .contrato-nome span { font-weight: 400; font-size: 11px; color: var(--text-mut); }
+  .contrato-acoes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .contrato-acoes .btn { flex: 1; padding: 6px 8px; font-size: 12px; }
+  .contrato-acoes .excluir { color: var(--bordo); }
+  .contrato-status { font-size: 12px; color: var(--text-mut); margin: 0; }
 </style>
 </head>
 <body>
@@ -346,6 +355,11 @@
     </div>
 
     <div class="field">
+      <label>Contrato (PDF)</label>
+      <div id="contratoEdit"></div>
+    </div>
+
+    <div class="field">
       <label>Equipe escalada</label>
       <button type="button" class="btn" onclick="toggleEquipePanel()">Ver / adicionar equipe (<span id="equipeCount">0</span>)</button>
     </div>
@@ -380,6 +394,8 @@
     </div>
   </div>
 </div>
+
+<input type="file" id="inputContrato" accept="application/pdf,.pdf" style="display:none;" onchange="contratoEscolhido(this)" />
 
 <!-- Firebase (compat SDK, mais simples de usar sem bundler) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -855,6 +871,7 @@ function abrirModal(id) {
     checklist = [];
   }
   equipe = ev && ev.equipe ? ev.equipe.map(f => ({ ...f, confirmado: true })) : [];
+  contratoPendente = null;
 
   renderStatusSelect();
   renderChecklist();
@@ -862,6 +879,7 @@ function abrirModal(id) {
   document.getElementById('avisoData').style.display = 'none';
   document.getElementById('equipePanel').classList.remove('open');
   document.getElementById('overlay').classList.add('open');
+  renderContratos();
 }
 
 function verificarConflitoData() {
@@ -912,21 +930,31 @@ async function salvarEvento() {
     equipe: equipeConfirmada.map(f => ({ nome: f.nome.trim(), posicao: f.posicao.trim(), pix: f.pix.trim(), valor: Number(f.valor) || 0 }))
   };
 
+  let idSalvo = editandoId;
   if (usandoFirestore) {
     if (editandoId) {
       await db.collection('eventos').doc(editandoId).set(evento, { merge: true });
     } else {
-      await db.collection('eventos').add(evento);
+      const ref = await db.collection('eventos').add(evento);
+      idSalvo = ref.id;
     }
     // a lista é atualizada pelo listener em tempo real
   } else {
     if (editandoId) {
       const idx = eventos.findIndex(e => e.id === editandoId);
-      eventos[idx] = { ...evento, id: editandoId };
+      eventos[idx] = { ...eventos[idx], ...evento, id: editandoId };
     } else {
-      eventos.push({ ...evento, id: 'local-' + Date.now() });
+      idSalvo = 'local-' + Date.now();
+      eventos.push({ ...evento, id: idSalvo });
     }
     renderTudo();
+  }
+
+  // evento novo: o contrato escolhido só pode ser enviado depois que o evento existe
+  if (contratoPendente) {
+    const arquivo = contratoPendente;
+    contratoPendente = null;
+    await enviarContrato(idSalvo, arquivo);
   }
 
   fecharModal();
@@ -984,9 +1012,13 @@ function abrirVisualizacao(id) {
     <p class="view-secao-titulo">Checklist</p>
     ${checklistHtml}
 
+    <p class="view-secao-titulo">Contrato</p>
+    <div id="contratoView"></div>
+
     <p class="view-secao-titulo">Equipe escalada</p>
     ${equipeHtml}
   `;
+  renderContratos();
 
   document.getElementById('viewOverlay').classList.add('open');
 }
@@ -1002,12 +1034,224 @@ function editarDoView() {
   abrirModal(id);
 }
 
+/* ---------- Contrato (PDF) ----------
+   O Firebase Storage exige o plano pago, então o PDF fica no próprio Firestore:
+   convertido em texto (base64) e picado em pedaços, porque cada documento aceita no máximo 1 MB.
+   - eventos/{id}.contrato          -> { nome, tamanho, versao, partes, enviadoEm }
+   - eventos/{id}/contratoPartes/   -> documentos "{versao}_{n}" com { dados }
+   Um contrato novo é gravado com outra versão antes de apagar o antigo,
+   assim uma falha no meio do envio nunca estraga o que já estava salvo. */
+
+const CONTRATO_MAX_BYTES = 5 * 1024 * 1024;
+const CONTRATO_PEDACO = 700000; // caracteres de base64 por documento (folga abaixo de 1 MB)
+
+let contratoPendente = null;  // PDF escolhido num evento novo, enviado ao salvar
+let contratoAlvoId = null;    // evento que vai receber o PDF escolhido (null = evento novo)
+let contratoOcupado = null;   // mensagem enquanto envia/abre/exclui
+const contratosLocais = {};   // pedaços em memória quando o Firebase não está configurado
+
+function fmtTamanho(bytes) {
+  if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1).replace('.', ',') + ' MB';
+}
+
+function htmlContrato(id) {
+  if (contratoOcupado) return `<p class="contrato-status">${contratoOcupado}</p>`;
+  const ev = id ? eventos.find(e => e.id === id) : null;
+  const c = ev && ev.contrato;
+  if (c) {
+    return `
+      <div class="contrato-box">
+        <p class="contrato-nome">📄 ${escapeHtml(c.nome)} <span>${fmtTamanho(c.tamanho)}</span></p>
+        <div class="contrato-acoes">
+          <button type="button" class="btn" onclick="verContrato('${id}')">Ver</button>
+          <button type="button" class="btn" onclick="baixarContrato('${id}')">Baixar</button>
+          <button type="button" class="btn" onclick="escolherContrato('${id}')">Substituir</button>
+          <button type="button" class="btn excluir" onclick="excluirContrato('${id}')">Excluir</button>
+        </div>
+      </div>`;
+  }
+  if (!id && contratoPendente) {
+    return `
+      <div class="contrato-box">
+        <p class="contrato-nome">📄 ${escapeHtml(contratoPendente.name)} <span>${fmtTamanho(contratoPendente.size)} · será enviado ao salvar</span></p>
+        <div class="contrato-acoes">
+          <button type="button" class="btn" onclick="escolherContrato(null)">Trocar</button>
+          <button type="button" class="btn excluir" onclick="contratoPendente = null; renderContratos();">Remover</button>
+        </div>
+      </div>`;
+  }
+  return `<button type="button" class="btn" onclick="escolherContrato(${id ? `'${id}'` : 'null'})">📎 Anexar contrato</button>`;
+}
+
+function renderContratos() {
+  const edit = document.getElementById('contratoEdit');
+  if (edit && document.getElementById('overlay').classList.contains('open')) edit.innerHTML = htmlContrato(editandoId);
+  const view = document.getElementById('contratoView');
+  if (view && viewId) view.innerHTML = htmlContrato(viewId);
+}
+
+function escolherContrato(id) {
+  contratoAlvoId = id;
+  const input = document.getElementById('inputContrato');
+  input.value = '';
+  input.click();
+}
+
+async function contratoEscolhido(input) {
+  const arquivo = input.files[0];
+  if (!arquivo) return;
+  if (arquivo.type !== 'application/pdf' && !/\.pdf$/i.test(arquivo.name)) {
+    alert('O contrato precisa ser um arquivo PDF.');
+    return;
+  }
+  if (arquivo.size > CONTRATO_MAX_BYTES) {
+    alert(`O PDF tem ${fmtTamanho(arquivo.size)}. O limite é ${fmtTamanho(CONTRATO_MAX_BYTES)}.`);
+    return;
+  }
+  if (!contratoAlvoId) {
+    contratoPendente = arquivo;
+    renderContratos();
+    return;
+  }
+  const ev = eventos.find(e => e.id === contratoAlvoId);
+  if (ev && ev.contrato && !confirm(`Substituir o contrato atual (${ev.contrato.nome}) por ${arquivo.name}?`)) return;
+  await enviarContrato(contratoAlvoId, arquivo);
+}
+
+function lerBase64(arquivo) {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(String(leitor.result).split(',')[1] || '');
+    leitor.onerror = () => reject(leitor.error);
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+async function enviarContrato(id, arquivo) {
+  contratoOcupado = 'Enviando contrato…';
+  renderContratos();
+  try {
+    const base64 = await lerBase64(arquivo);
+    const pedacos = [];
+    for (let i = 0; i < base64.length; i += CONTRATO_PEDACO) pedacos.push(base64.slice(i, i + CONTRATO_PEDACO));
+    const meta = { nome: arquivo.name, tamanho: arquivo.size, versao: String(Date.now()), partes: pedacos.length, enviadoEm: new Date().toISOString() };
+    const ev = eventos.find(e => e.id === id);
+    const antigo = ev && ev.contrato;
+
+    if (usandoFirestore) {
+      const ref = db.collection('eventos').doc(id);
+      const lote = db.batch();
+      pedacos.forEach((dados, n) => lote.set(ref.collection('contratoPartes').doc(`${meta.versao}_${n}`), { dados }));
+      lote.update(ref, { contrato: meta });
+      await lote.commit();
+      if (antigo) await apagarPedacos(id, antigo).catch(e => console.warn('Pedaços antigos não apagados:', e));
+    } else {
+      contratosLocais[id] = pedacos;
+      if (ev) ev.contrato = meta;
+    }
+  } catch (e) {
+    console.error('Erro ao enviar contrato:', e);
+    alert('Não foi possível salvar o contrato. Verifique a internet e tente de novo.');
+  } finally {
+    contratoOcupado = null;
+    renderContratos();
+  }
+}
+
+function apagarPedacos(id, meta) {
+  const ref = db.collection('eventos').doc(id);
+  const lote = db.batch();
+  for (let n = 0; n < meta.partes; n++) lote.delete(ref.collection('contratoPartes').doc(`${meta.versao}_${n}`));
+  return lote.commit();
+}
+
+async function excluirContrato(id) {
+  const ev = eventos.find(e => e.id === id);
+  if (!ev || !ev.contrato) return;
+  if (!confirm(`Excluir o contrato ${ev.contrato.nome}? Não dá para desfazer.`)) return;
+  contratoOcupado = 'Excluindo contrato…';
+  renderContratos();
+  try {
+    if (usandoFirestore) {
+      await db.collection('eventos').doc(id).update({ contrato: firebase.firestore.FieldValue.delete() });
+      await apagarPedacos(id, ev.contrato).catch(e => console.warn('Pedaços não apagados:', e));
+    } else {
+      delete contratosLocais[id];
+      delete ev.contrato;
+    }
+  } catch (e) {
+    console.error('Erro ao excluir contrato:', e);
+    alert('Não foi possível excluir o contrato. Tente de novo.');
+  } finally {
+    contratoOcupado = null;
+    renderContratos();
+  }
+}
+
+async function carregarContrato(id) {
+  const ev = eventos.find(e => e.id === id);
+  const meta = ev.contrato;
+  let pedacos;
+  if (usandoFirestore) {
+    const ref = db.collection('eventos').doc(id);
+    const docs = await Promise.all(
+      Array.from({ length: meta.partes }, (_, n) => ref.collection('contratoPartes').doc(`${meta.versao}_${n}`).get())
+    );
+    if (docs.some(d => !d.exists)) throw new Error('Contrato incompleto no banco');
+    pedacos = docs.map(d => d.data().dados);
+  } else {
+    pedacos = contratosLocais[id] || [];
+  }
+  const binario = atob(pedacos.join(''));
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return { nome: meta.nome, url: URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })) };
+}
+
+async function verContrato(id) {
+  // a aba precisa ser aberta já no clique, senão o navegador bloqueia como pop-up
+  const aba = window.open('', '_blank');
+  if (aba) aba.document.write('<p style="font-family:sans-serif; padding:16px;">Abrindo contrato…</p>');
+  try {
+    const { url } = await carregarContrato(id);
+    if (aba) aba.location.href = url; else window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    console.error('Erro ao abrir contrato:', e);
+    if (aba) aba.close();
+    alert('Não foi possível abrir o contrato. Tente de novo.');
+  }
+}
+
+async function baixarContrato(id) {
+  contratoOcupado = 'Preparando download…';
+  renderContratos();
+  try {
+    const { nome, url } = await carregarContrato(id);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) {
+    console.error('Erro ao baixar contrato:', e);
+    alert('Não foi possível baixar o contrato. Tente de novo.');
+  } finally {
+    contratoOcupado = null;
+    renderContratos();
+  }
+}
+
 /* ---------- Inicialização ---------- */
 
 if (usandoFirestore) {
   db.collection('eventos').onSnapshot(snap => {
     eventos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderTudo();
+    renderContratos();
   }, err => {
     console.error('Erro ao ler Firestore:', err);
   });
