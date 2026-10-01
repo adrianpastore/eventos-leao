@@ -314,13 +314,14 @@
 
     <div class="field">
       <label>Tipo de evento</label>
-      <select id="fTipo">
+      <select id="fTipo" onchange="atualizarTipoOutro()">
         <option>Aniversário</option>
         <option>Casamento</option>
         <option>Corporativo</option>
         <option>Formatura</option>
         <option>Outro</option>
       </select>
+      <input id="fTipoOutro" type="text" placeholder="Qual o tipo de evento? (ex: batizado)" style="display:none; margin-top:6px;" />
     </div>
 
     <div class="field">
@@ -567,7 +568,7 @@ function renderLista() {
       <div class="hora">${e.hora || ''}</div>
       <div class="info">
         <p class="nome">${escapeHtml(e.cliente)}</p>
-        <p class="meta">${e.tipo} · ${e.convidados || 0} pessoas</p>
+        <p class="meta">${escapeHtml(e.tipo)} · ${e.convidados || 0} pessoas</p>
       </div>
       <span class="status-pill" style="color:${st.text}">${st.label}</span>
     `;
@@ -615,7 +616,7 @@ function renderCalendario() {
         <div class="evt-num">${dia}</div>
         <div>
           <div class="evt-nome">${escapeHtml(evento.cliente)}</div>
-          <div class="evt-detalhe">${evento.hora || ''} · ${evento.tipo}</div>
+          <div class="evt-detalhe">${evento.hora || ''} · ${escapeHtml(evento.tipo)}</div>
         </div>
       `;
       bloco.onclick = () => abrirVisualizacao(evento.id);
@@ -855,7 +856,11 @@ function abrirModal(id) {
   document.getElementById('modalTitle').textContent = ev ? 'Editar evento' : 'Novo evento';
   document.getElementById('fCliente').value = ev ? ev.cliente : '';
   document.getElementById('fTelefone').value = ev ? (ev.telefone || '') : '';
-  document.getElementById('fTipo').value = ev ? ev.tipo : 'Aniversário';
+  // tipo digitado em "Outro" é salvo como texto próprio (ex: "Batizado"); ao editar, volta para "Outro" + campo preenchido
+  const tipoNaLista = !ev || TIPOS_FIXOS.includes(ev.tipo);
+  document.getElementById('fTipo').value = !ev ? 'Aniversário' : (tipoNaLista ? ev.tipo : 'Outro');
+  document.getElementById('fTipoOutro').value = (ev && !tipoNaLista) ? ev.tipo : '';
+  atualizarTipoOutro();
   document.getElementById('fCardapio').value = ev ? (ev.cardapio || '') : '';
   document.getElementById('fData').value = ev ? ev.data : '';
   document.getElementById('fHora').value = ev ? ev.hora : '';
@@ -880,6 +885,21 @@ function abrirModal(id) {
   document.getElementById('equipePanel').classList.remove('open');
   document.getElementById('overlay').classList.add('open');
   renderContratos();
+}
+
+const TIPOS_FIXOS = ['Aniversário', 'Casamento', 'Corporativo', 'Formatura', 'Outro'];
+
+function atualizarTipoOutro() {
+  const ehOutro = document.getElementById('fTipo').value === 'Outro';
+  const campo = document.getElementById('fTipoOutro');
+  campo.style.display = ehOutro ? '' : 'none';
+  if (ehOutro && document.getElementById('overlay').classList.contains('open')) campo.focus();
+}
+
+function tipoEscolhido() {
+  const tipo = document.getElementById('fTipo').value;
+  if (tipo !== 'Outro') return tipo;
+  return document.getElementById('fTipoOutro').value.trim() || 'Outro';
 }
 
 function verificarConflitoData() {
@@ -918,7 +938,7 @@ async function salvarEvento() {
   const evento = {
     cliente,
     telefone: document.getElementById('fTelefone').value.trim(),
-    tipo: document.getElementById('fTipo').value,
+    tipo: tipoEscolhido(),
     cardapio: document.getElementById('fCardapio').value,
     data,
     hora: document.getElementById('fHora').value,
