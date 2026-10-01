@@ -314,6 +314,18 @@
       </select>
     </div>
 
+    <div class="field">
+      <label>Cardápio</label>
+      <select id="fCardapio">
+        <option value="">A definir</option>
+        <option>Galeto 1</option>
+        <option>Galeto 2</option>
+        <option>Galeto 3</option>
+        <option>Carreteiro</option>
+        <option>Chapa completa</option>
+      </select>
+    </div>
+
     <div class="row2">
       <div class="field"><label>Data</label><input id="fData" type="date" oninput="verificarConflitoData()" /></div>
       <div class="field"><label>Horário</label><input id="fHora" type="time" /></div>
@@ -423,7 +435,6 @@ const STATUS = [
 ];
 
 const CHECKLIST_PADRAO = [
-  'Cardápio combinado',
   'Equipe escalada',
   'Decoração combinada',
   'Restrições alimentares confirmadas',
@@ -463,8 +474,11 @@ function statusInfo(id) {
   return STATUS.find(s => s.id === id) || STATUS[0];
 }
 
+let mesesJaRolados = false;
+
 function renderMonths() {
   const wrap = document.getElementById('months');
+  const scrollAnterior = wrap.scrollLeft;
   wrap.innerHTML = '';
   // meses do ano atual
   for (let m = 0; m < 12; m++) {
@@ -477,6 +491,16 @@ function renderMonths() {
   wrap.appendChild(sep);
   for (let m = 0; m < 12; m++) {
     wrap.appendChild(mesChip(m, anoAtual + 1, false));
+  }
+
+  // Na primeira vez, rola o carrossel até o mês ativo (no celular ele ficava escondido lá no fim).
+  // Depois disso, mantém a posição em que o usuário deixou.
+  const ativo = wrap.querySelector('.month-chip.active');
+  if (!mesesJaRolados && ativo) {
+    wrap.scrollLeft = ativo.getBoundingClientRect().left - wrap.getBoundingClientRect().left;
+    mesesJaRolados = true;
+  } else {
+    wrap.scrollLeft = scrollAnterior;
   }
 }
 function anoAtivoBase() { return anoAtual; }
@@ -816,6 +840,7 @@ function abrirModal(id) {
   document.getElementById('fCliente').value = ev ? ev.cliente : '';
   document.getElementById('fTelefone').value = ev ? (ev.telefone || '') : '';
   document.getElementById('fTipo').value = ev ? ev.tipo : 'Aniversário';
+  document.getElementById('fCardapio').value = ev ? (ev.cardapio || '') : '';
   document.getElementById('fData').value = ev ? ev.data : '';
   document.getElementById('fHora').value = ev ? ev.hora : '';
   document.getElementById('fConvidados').value = ev ? ev.convidados : '';
@@ -876,6 +901,7 @@ async function salvarEvento() {
     cliente,
     telefone: document.getElementById('fTelefone').value.trim(),
     tipo: document.getElementById('fTipo').value,
+    cardapio: document.getElementById('fCardapio').value,
     data,
     hora: document.getElementById('fHora').value,
     convidados: Number(document.getElementById('fConvidados').value) || 0,
@@ -946,6 +972,7 @@ function abrirVisualizacao(id) {
     <p style="font-size:12px; color:var(--text-mut); margin:0 0 12px;">${ev.telefone ? escapeHtml(ev.telefone) : 'Sem telefone informado'}</p>
 
     <p class="view-linha"><strong>Tipo:</strong> ${escapeHtml(ev.tipo)}</p>
+    <p class="view-linha"><strong>Cardápio:</strong> ${ev.cardapio ? escapeHtml(ev.cardapio) : 'a definir'}</p>
     <p class="view-linha"><strong>Data:</strong> ${formatarDataCompleta(ev.data)}</p>
     <p class="view-linha"><strong>Horário:</strong> ${ev.hora || 'não informado'}</p>
     <p class="view-linha"><strong>Convidados:</strong> ${ev.convidados || 0}</p>
