@@ -194,6 +194,18 @@
   .add-item { font-size: 12px; color: var(--verde); cursor: pointer; margin-top: 2px; }
   .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
   .modal-actions .btn { flex: 1; }
+  /* Login */
+  body.carregando header, body.carregando #app,
+  body.deslogado header, body.deslogado #app { display: none; }
+  #telaLogin { display: none; min-height: 100vh; align-items: center; justify-content: center; padding: 16px; }
+  body.deslogado #telaLogin { display: flex; }
+  .login-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 20px; width: 100%; max-width: 360px; }
+  .login-card h1 { font-size: 18px; margin: 0 0 2px; color: var(--verde-escuro); }
+  .login-card .sub { font-size: 12px; color: var(--text-mut); margin: 0 0 18px; }
+  .login-card .btn { width: 100%; padding: 10px; font-size: 14px; }
+  .login-erro { font-size: 12px; color: var(--bordo); margin: 0 0 10px; min-height: 1em; }
+  .login-link { display: block; text-align: center; font-size: 12px; color: var(--verde); margin-top: 12px; cursor: pointer; background: none; border: none; width: 100%; }
+  .btn-sair { background: transparent; color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.35); }
   .cfg-warning { font-size: 12px; background: #fff4e5; border: 1px solid #f0c36d; color: #8a5a00; padding: 10px 12px; border-radius: 8px; margin-bottom: 14px; }
 
   /* Painel de equipe: popup no celular, painel ao lado no computador */
@@ -267,7 +279,25 @@
   }
 </style>
 </head>
-<body>
+<body class="carregando">
+
+<div id="telaLogin">
+  <form class="login-card" onsubmit="entrar(event)">
+    <h1>Eventos · Leão do Parque</h1>
+    <p class="sub">Entre com o e-mail e a senha do restaurante.</p>
+    <div class="field">
+      <label for="loginEmail">E-mail</label>
+      <input type="email" id="loginEmail" autocomplete="username" required />
+    </div>
+    <div class="field">
+      <label for="loginSenha">Senha</label>
+      <input type="password" id="loginSenha" autocomplete="current-password" required />
+    </div>
+    <p class="login-erro" id="loginErro"></p>
+    <button type="submit" class="btn primary" id="btnEntrar">Entrar</button>
+    <button type="button" class="login-link" onclick="esqueciSenha()">Esqueci a senha</button>
+  </form>
+</div>
 
 <header>
   <div>
@@ -280,6 +310,7 @@
       <button class="header-tab-btn" id="tabRelatorio" onclick="mudarVisao('relatorio')">Relatório</button>
     </div>
     <button class="btn primary" onclick="abrirModal()">+ Novo evento</button>
+    <button class="btn btn-sair" id="btnSair" onclick="sair()" style="display:none;">Sair</button>
   </div>
 </header>
 
@@ -445,6 +476,7 @@
 <!-- Firebase (compat SDK, mais simples de usar sem bundler) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
 <script>
 /* =======================================================
@@ -463,6 +495,7 @@ const firebaseConfig = {
 };
 
 let db = null;
+let auth = null;
 let eventos = [];
 let usandoFirestore = false;
 
@@ -470,6 +503,8 @@ try {
   if (firebaseConfig.apiKey !== "COLE_AQUI") {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
+    auth = firebase.auth(); // o login fica salvo no aparelho até clicar em "Sair"
+    auth.languageCode = 'pt';
     // guarda os dados no aparelho: sem internet, o app abre e as alterações ficam na fila até a conexão voltar
     db.enablePersistence({ synchronizeTabs: true }).catch(e => console.warn('Modo offline indisponível:', e.code));
     usandoFirestore = true;
@@ -1516,17 +1551,108 @@ async function baixarContrato(id) {
   }
 }
 
+/* ---------- Login (Firebase Auth, e-mail e senha) ---------- */
+// As contas são criadas só no console do Firebase (Authentication). O app não tem cadastro.
+
+function mostrarTela(estado) { // 'carregando' | 'deslogado' | 'logado'
+  document.body.classList.toggle('carregando', estado === 'carregando');
+  document.body.classList.toggle('deslogado', estado === 'deslogado');
+}
+
+function mensagemErroLogin(codigo) {
+  switch (codigo) {
+    case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+    case 'auth/invalid-email':
+      return 'E-mail ou senha incorretos.';
+    case 'auth/too-many-requests':
+      return 'Muitas tentativas erradas. Espere alguns minutos e tente de novo.';
+    case 'auth/network-request-failed':
+      return 'Sem internet. Para entrar é preciso estar conectado.';
+    case 'auth/user-disabled':
+      return 'Este acesso foi desativado.';
+    default:
+      return 'Não foi possível entrar. Tente de novo.';
+  }
+}
+
+async function entrar(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  const erro = document.getElementById('loginErro');
+  const btn = document.getElementById('btnEntrar');
+  erro.textContent = '';
+  btn.disabled = true;
+  btn.textContent = 'Entrando...';
+  try {
+    await auth.signInWithEmailAndPassword(email, senha);
+    document.getElementById('loginSenha').value = '';
+  } catch (err) {
+    console.error('Erro no login:', err);
+    erro.textContent = mensagemErroLogin(err.code);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+  }
+}
+
+async function esqueciSenha() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const erro = document.getElementById('loginErro');
+  if (!email) { erro.textContent = 'Digite o e-mail acima e clique de novo em "Esqueci a senha".'; return; }
+  try {
+    await auth.sendPasswordResetEmail(email);
+  } catch (err) {
+    console.error('Erro ao pedir nova senha:', err);
+  }
+  // mesma mensagem com ou sem conta, para não revelar quais e-mails existem
+  erro.textContent = 'Se este e-mail tiver acesso, chega nele um link para criar uma nova senha.';
+}
+
+async function sair() {
+  if (!confirm('Sair deste aparelho? Os dados guardados nele para uso sem internet serão apagados.')) return;
+  try {
+    await auth.signOut();
+    // apaga a cópia local do banco, para ninguém ver os eventos neste aparelho depois de sair
+    await db.terminate();
+    await db.clearPersistence();
+  } catch (e) {
+    console.warn('Não foi possível limpar os dados locais:', e);
+  }
+  location.reload();
+}
+
 /* ---------- Inicialização ---------- */
 
+let pararLeitura = null;
+
 if (usandoFirestore) {
-  db.collection('eventos').onSnapshot(snap => {
-    eventos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  auth.onAuthStateChanged(usuario => {
+    if (pararLeitura) { pararLeitura(); pararLeitura = null; }
+    if (!usuario) {
+      eventos = [];
+      mostrarTela('deslogado');
+      return;
+    }
+    document.getElementById('btnSair').style.display = '';
+    mostrarTela('logado');
     renderTudo();
-    renderContratos();
-  }, err => {
-    console.error('Erro ao ler Firestore:', err);
+    pararLeitura = db.collection('eventos').onSnapshot(snap => {
+      eventos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderTudo();
+      renderContratos();
+    }, err => {
+      console.error('Erro ao ler Firestore:', err);
+      if (err.code === 'permission-denied') {
+        alert('Esta conta não tem permissão para ver os eventos. Confira a UID nas regras do Firestore.');
+      }
+    });
   });
 } else {
+  mostrarTela('logado');
   renderTudo();
 }
 </script>

@@ -4,7 +4,7 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 
 - Repositório: https://github.com/adrianpastore/eventos-leao (branch `main`)
 - Banco: Firebase Firestore, projeto `eventos-leao` (SDK *compat* 10.12.2 via CDN). A config fica em `firebaseConfig` no próprio `index.html`.
-- Sem login: quem tem o link vê e edita tudo, inclusive contratos, telefones e Pix da equipe.
+- Login por e-mail e senha (Firebase Auth). As contas são criadas só no console do Firebase; o app não tem cadastro. Todas as contas liberadas veem e editam tudo.
 
 ## Fluxo de trabalho combinado
 
@@ -67,15 +67,15 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - Todo texto vindo do usuário passa por `escapeHtml()` antes de ir para `innerHTML`, inclusive o `tipo`, que agora pode ser digitado.
 - `salvarEvento` usa `set(..., { merge: true })`, então campos que não estão no formulário (como `contrato`) são preservados ao editar.
 
-## Próximo passo (prioridade, combinado em 01/10/2026 para 02/10)
+## Login e regras
 
-**Login com PIN de verdade.** Um PIN conferido só na página não protege: o código e a config do Firebase são públicos, então dá para ler o Firestore direto. Plano aprovado em conversa:
-- Usar o Firebase Auth (e-mail/senha, grátis) com **uma conta única do restaurante**. O usuário digita só o PIN, e o app faz `signInWithEmailAndPassword(EMAIL_FIXO, pin)`. O PIN fica só no Firebase, nunca no código.
-- O PIN precisa de no mínimo 6 caracteres (exigência do Firebase). O Firebase já bloqueia quem erra muitas vezes.
-- O login fica salvo no aparelho (persistência padrão do Auth). Botão "Sair" no cabeçalho.
-- Regras do Firestore: `allow read, write: if request.auth != null;` em `eventos/{id}` e `eventos/{id}/contratoPartes/{parte}`.
-- O usuário faz no console (guiar passo a passo): ativar o provedor E-mail/senha, criar o usuário com o PIN e colar as regras. A ordem importa: publicar o app com login **antes** de trocar as regras, senão o site atual para de funcionar.
-- Limitações já explicadas ao usuário: PIN compartilhado (sem saber quem fez o quê) e, para revogar acesso, é preciso trocar o PIN.
+- Tela de login (e-mail e senha) antes do app; "Esqueci a senha" manda o e-mail de redefinição do Firebase. O login fica salvo no aparelho (persistência padrão do Auth).
+- "Sair" no cabeçalho: desloga e apaga a cópia local do Firestore (`terminate` + `clearPersistence`).
+- O `onSnapshot` só começa depois do login. No modo local (`apiKey: "COLE_AQUI"`) não há login.
+- `firestore.rules` no repositório é a cópia versionada; o que vale é o publicado no console. Libera `eventos` e `contratoPartes` só para as UIDs da lista (`request.auth.uid in [...]`), porque com só `request.auth != null` qualquer pessoa poderia criar uma conta pela API pública.
+- No console: desmarcar "Enable create (sign-up)" em Authentication > Settings > User actions.
+- Ordem: publicar o app com login **antes** de trocar as regras, senão o site para.
+- Limitações: sem saber quem fez o quê; para tirar o acesso de alguém, apagar/desativar a conta ou tirar a UID das regras.
 
 ## Ideias para depois
 

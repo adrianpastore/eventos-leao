@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Regras do Firestore do Eventos · Leão do Parque.
+// Este arquivo é só a cópia guardada no repositório: o que vale é o que estiver
+// publicado no console do Firebase (Firestore Database > Regras). Cole este texto lá.
+//
+// Só entra quem fez login com uma das contas da lista abaixo.
+// A UID de cada conta aparece em Authentication > Users (coluna "User UID").
+// Para dar acesso a mais alguém: crie a conta no console e acrescente a UID aqui.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autorizado() {
+      return request.auth != null
+        && request.auth.uid in [
+          'COLE_A_UID_AQUI'
+        ];
+    }
+
+    match /eventos/{id} {
+      allow read, write: if autorizado();
+
+      match /contratoPartes/{parte} {
+        allow read, write: if autorizado();
+      }
+    }
+
+    // qualquer outro caminho fica fechado
+  }
+}
