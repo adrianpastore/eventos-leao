@@ -25,10 +25,9 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 - **Relatório**: totais do mês (eventos, faturamento, falta receber, custo da equipe, ticket médio, convidados) e detalhamento.
   - **Exportar planilha**: baixa `eventos-AAAA-MM.csv` com uma linha por evento do mês, respeitando os filtros. Formato do Excel em português: separador `;`, BOM UTF-8, vírgula decimal, datas dd/mm/aaaa. Campos com `;`, aspas ou quebra de linha vão entre aspas; texto começando com `= + - @` ganha um `'` na frente (para o Excel não tratar como fórmula, ex.: telefone `+55...`).
 - **Modal do evento** (criar/editar, com "Excluir evento" ao editar, que também apaga o contrato) e **detalhes** (somente leitura, com Editar, Imprimir e Gerar contrato).
-- **Detalhes**: total do evento, falta receber, custo da equipe e botão de WhatsApp (`wa.me`, com 55 na frente quando o número não tem DDI).
+- **Detalhes**: total do evento, falta receber, custo da equipe e botão de WhatsApp (`wa.me`, com 55 na frente quando o número não tem DDI). No rodapé: "Criado por X em dd/mm/aaaa hh:mm · Última alteração por Y em ..." e "Ver histórico" (recolhível, mais recente primeiro). Evento antigo sem esses campos mostra "Sem registro de quem criou".
 - **Imprimir**: folha para a cozinha e a equipe numa aba nova (data, horário, convidados, cardápio, checklist, equipe), **sem valores nem chaves Pix**.
 - **Mais de um evento por dia** é permitido. Ao escolher uma data ocupada, o modal mostra um aviso (não bloqueia); ao salvar, pede uma confirmação ("Já existe evento neste dia: Fulano (19h). Salvar mesmo assim?"), só quando a data é nova para aquele evento. Lista, calendários, Pendentes, Relatório e planilha ordenam por data e horário (`ordemDataHora`; sem horário fica por último). A impressão mostra "Também neste dia" com os outros eventos da data (só nome e horário).
-
 - **Gerar contrato** (nos detalhes, seção Contrato): abre numa aba nova uma folha A4 com o texto do modelo preenchido, com botão "Imprimir / salvar em PDF". É diferente do contrato em PDF anexado (que continua igual).
 - **Modelo de contrato** (botão no cabeçalho): edita o texto do modelo, com a lista de marcadores (clicar insere no cursor) e "Restaurar modelo padrão" (só vale depois de "Salvar modelo"). Mostra quem salvou por último.
 
@@ -52,8 +51,18 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 | `checklist` | `[{ texto, feito }]`; padrão: Equipe escalada, Decoração combinada, Restrições alimentares confirmadas, Som/música confirmado |
 | `equipe` | `[{ nome, posicao, pix, valor }]`; nome, posição e Pix são obrigatórios para confirmar; custo da equipe = soma dos `valor` |
 | `contrato` | ver abaixo |
+| `criadoPor`, `criadoEm` | e-mail de quem criou e data ISO; gravados só na criação |
+| `alteradoPor`, `alteradoEm` | última alteração (criar, editar, marcar concluído, anexar/substituir/excluir contrato) |
+| `historico` | `[{ quem, quando, acao }]`, só os últimos 30 (`HISTORICO_MAX`). `acao`: "criou", "editou", "editou (status: Pago)", "marcou concluído", "anexou contrato", "substituiu contrato", "excluiu contrato" |
 
-Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o campo `cardapio`. Isso é esperado.
+Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o campo `cardapio`, nem os campos de autoria (`criadoPor` etc.). Isso é esperado.
+
+### Quem fez o quê
+
+- `auditoria(ev, acao)` monta os campos e vai junto na mesma gravação (`set` com merge, `update` ou o lote do contrato). Autor = e-mail de `auth.currentUser`; no modo local, "modo local".
+- As datas são texto ISO com o relógio do aparelho (não `serverTimestamp`), porque funcionam igual sem internet e com o `aguardarGravacao`. `fmtDataHora` também aceita Timestamp do Firestore.
+- O `historico` é montado a partir da cópia local do evento e gravado inteiro (não dá para limitar a 30 com `arrayUnion`). Se duas pessoas alterarem o mesmo evento quase ao mesmo tempo, um registro pode se perder; os dados do evento não.
+- Excluir o evento apaga também o histórico dele.
 
 ## Contrato (PDF)
 
@@ -96,7 +105,8 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - **Pendente no console:** publicar o `firestore.rules` com a regra nova `config/{doc}` (Firestore Database > Regras). Sem ela, "Salvar modelo" dá erro de permissão e o app usa o modelo padrão.
 - No console: desmarcar "Enable create (sign-up)" em Authentication > Settings > User actions.
 - Ordem: publicar o app com login **antes** de trocar as regras, senão o site para.
-- Limitações: sem saber quem fez o quê; para tirar o acesso de alguém, apagar/desativar a conta ou tirar a UID das regras.
+- Limitações: o histórico é informativo (gravado pelo próprio app; as regras não impedem alterá-lo); para tirar o acesso de alguém, apagar/desativar a conta ou tirar a UID das regras.
 
 ## Ideias para depois
 
+- (nenhuma pendente)

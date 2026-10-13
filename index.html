@@ -276,6 +276,13 @@
   .contrato-status { font-size: 12px; color: var(--text-mut); margin: 0; }
   .gerar-contrato { width: 100%; margin-top: 6px; font-size: 12px; }
 
+  /* Quem fez o quê (detalhes) */
+  .auditoria { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-mut); }
+  .auditoria p { margin: 0 0 4px; }
+  .auditoria summary { cursor: pointer; color: var(--verde); }
+  .auditoria ul { margin: 6px 0 0; padding-left: 16px; }
+  .auditoria li { margin-bottom: 2px; }
+
   /* Modelo de contrato */
   .modelo-ajuda { font-size: 12px; color: var(--text-mut); margin: 0 0 10px; }
   .marcadores { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
@@ -896,14 +903,14 @@ async function marcarConcluido(id) {
   if (falta > 0 && !confirm(`${ev.cliente} ainda tem ${fmtMoeda(falta)} a receber pelo cadastro. Marcar como concluído mesmo assim?`)) return;
   if (usandoFirestore) {
     try {
-      const r = await aguardarGravacao(db.collection('eventos').doc(id).update({ status: 'concluido' }));
+      const r = await aguardarGravacao(db.collection('eventos').doc(id).update({ status: 'concluido', ...auditoria(ev, 'marcou concluído') }));
       if (r === 'pendente') alert(AVISO_PENDENTE);
     } catch (e) {
       console.error('Erro ao marcar concluído:', e);
       alert('Não foi possível atualizar o evento. Tente de novo.');
     }
   } else {
-    ev.status = 'concluido';
+    Object.assign(ev, { status: 'concluido' }, auditoria(ev, 'marcou concluído'));
     renderTudo();
   }
 }
@@ -1293,6 +1300,10 @@ async function salvarEvento() {
     equipe: equipeConfirmada.map(f => ({ nome: f.nome.trim(), posicao: f.posicao.trim(), pix: f.pix.trim(), valor: Number(f.valor) || 0 }))
   };
 
+  let acao = anterior ? 'editou' : 'criou';
+  if (anterior && anterior.status !== statusEscolhido) acao += ` (status: ${statusInfo(statusEscolhido).label})`;
+  Object.assign(evento, auditoria(anterior, acao));
+
   let idSalvo = editandoId;
   if (usandoFirestore) {
     // doc() sem id já gera o id na hora, mesmo sem internet (o add() só devolveria o id depois do servidor responder)
@@ -1427,6 +1438,8 @@ function abrirVisualizacao(id) {
 
     <p class="view-secao-titulo">Equipe escalada</p>
     ${equipeHtml}
+
+    <div class="auditoria" id="auditoriaView"></div>
   `;
   renderContratos();
 
@@ -1552,6 +1565,34 @@ function autorAtual() {
   if (!usandoFirestore) return 'modo local';
   const u = auth && auth.currentUser;
   return (u && u.email) || 'desconhecido';
+}
+
+/* Quem fez o quê: campos gravados junto com cada alteração do evento.
+   Datas em texto ISO (relógio do aparelho), que funcionam igual com ou sem internet.
+   historico = últimos HISTORICO_MAX registros { quem, quando, acao }.
+   ev = evento como está agora (null ao criar). Eventos antigos sem esses campos funcionam normalmente. */
+const HISTORICO_MAX = 30;
+
+function auditoria(ev, acao) {
+  const quem = autorAtual();
+  const quando = new Date().toISOString();
+  const anterior = ev && Array.isArray(ev.historico) ? ev.historico : [];
+  const dados = { alteradoPor: quem, alteradoEm: quando, historico: anterior.concat({ quem, quando, acao }).slice(-HISTORICO_MAX) };
+  if (!ev) { dados.criadoPor = quem; dados.criadoEm = quando; }
+  return dados;
+}
+
+function htmlAuditoria(ev) {
+  const quemQuando = (rotulo, quem, quando) =>
+    `${rotulo}${quem ? ' por ' + escapeHtml(quem) : ''}${fmtDataHora(quando) ? ' em ' + fmtDataHora(quando) : ''}`;
+  const partes = [];
+  if (ev.criadoPor || ev.criadoEm) partes.push(quemQuando('Criado', ev.criadoPor, ev.criadoEm));
+  if ((ev.alteradoPor || ev.alteradoEm) && ev.alteradoEm !== ev.criadoEm) partes.push(quemQuando('Última alteração', ev.alteradoPor, ev.alteradoEm));
+  const hist = (Array.isArray(ev.historico) ? ev.historico : []).filter(h => h && typeof h === 'object').slice().reverse();
+  if (!partes.length && !hist.length) return '<p>Sem registro de quem criou (evento anterior a este controle).</p>';
+  const lista = hist.map(h => `<li>${fmtDataHora(h.quando)} · ${escapeHtml(h.quem)} ${escapeHtml(h.acao)}</li>`).join('');
+  return `${partes.length ? `<p>${partes.join(' · ')}</p>` : ''}
+    ${hist.length ? `<details id="historicoDetalhes"><summary>Ver histórico (${hist.length})</summary><ul>${lista}</ul></details>` : ''}`;
 }
 
 // Data e hora em dd/mm/aaaa hh:mm (aceita texto ISO ou Timestamp do Firestore)
@@ -1742,6 +1783,15 @@ function renderContratos() {
   if (edit && document.getElementById('overlay').classList.contains('open')) edit.innerHTML = htmlContrato(editandoId);
   const view = document.getElementById('contratoView');
   if (view && viewId) view.innerHTML = htmlContrato(viewId);
+  // "quem fez o quê" nos detalhes também muda ao anexar/excluir contrato ou quando chega alteração do banco
+  const aud = document.getElementById('auditoriaView');
+  const ev = viewId && eventos.find(e => e.id === viewId);
+  if (aud && ev) {
+    const aberto = !!(document.getElementById('historicoDetalhes') || {}).open;
+    aud.innerHTML = htmlAuditoria(ev);
+    const det = document.getElementById('historicoDetalhes');
+    if (det) det.open = aberto;
+  }
 }
 
 function escolherContrato(id) {
@@ -1795,17 +1845,18 @@ async function enviarContrato(id, arquivo) {
     const meta = { nome: arquivo.name, tamanho: arquivo.size, versao: String(Date.now()), partes: pedacos.length, enviadoEm: new Date().toISOString() };
     const ev = eventos.find(e => e.id === id);
     const antigo = ev && ev.contrato;
+    const registro = auditoria(ev, antigo ? 'substituiu contrato' : 'anexou contrato');
 
     if (usandoFirestore) {
       const ref = db.collection('eventos').doc(id);
       const lote = db.batch();
       pedacos.forEach((dados, n) => lote.set(ref.collection('contratoPartes').doc(`${meta.versao}_${n}`), { dados }));
-      lote.update(ref, { contrato: meta });
+      lote.update(ref, { contrato: meta, ...registro });
       await lote.commit();
       if (antigo) await apagarPedacos(id, antigo).catch(e => console.warn('Pedaços antigos não apagados:', e));
     } else {
       contratosLocais[id] = pedacos;
-      if (ev) ev.contrato = meta;
+      if (ev) Object.assign(ev, { contrato: meta }, registro);
     }
   } catch (e) {
     console.error('Erro ao enviar contrato:', e);
@@ -1831,11 +1882,12 @@ async function excluirContrato(id) {
   renderContratos();
   try {
     if (usandoFirestore) {
-      await db.collection('eventos').doc(id).update({ contrato: firebase.firestore.FieldValue.delete() });
+      await db.collection('eventos').doc(id).update({ contrato: firebase.firestore.FieldValue.delete(), ...auditoria(ev, 'excluiu contrato') });
       await apagarPedacos(id, ev.contrato).catch(e => console.warn('Pedaços não apagados:', e));
     } else {
       delete contratosLocais[id];
       delete ev.contrato;
+      Object.assign(ev, auditoria(ev, 'excluiu contrato'));
     }
   } catch (e) {
     console.error('Erro ao excluir contrato:', e);
