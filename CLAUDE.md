@@ -24,10 +24,20 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 - **Pendentes**: aviso no topo do Quadro com os eventos de data passada que não estão como Concluído, com o botão "Marcar concluído" (pede confirmação se ainda falta receber). Como os meses passados ficam bloqueados no Quadro, esse aviso é o caminho para chegar neles.
 - **Relatório**: totais do mês (eventos, faturamento, falta receber, custo da equipe, ticket médio, convidados) e detalhamento.
   - **Exportar planilha**: baixa `eventos-AAAA-MM.csv` com uma linha por evento do mês, respeitando os filtros. Formato do Excel em português: separador `;`, BOM UTF-8, vírgula decimal, datas dd/mm/aaaa. Campos com `;`, aspas ou quebra de linha vão entre aspas; texto começando com `= + - @` ganha um `'` na frente (para o Excel não tratar como fórmula, ex.: telefone `+55...`).
-- **Modal do evento** (criar/editar, com "Excluir evento" ao editar, que também apaga o contrato) e **detalhes** (somente leitura, com Editar e Imprimir).
+- **Modal do evento** (criar/editar, com "Excluir evento" ao editar, que também apaga o contrato) e **detalhes** (somente leitura, com Editar, Imprimir e Gerar contrato).
 - **Detalhes**: total do evento, falta receber, custo da equipe e botão de WhatsApp (`wa.me`, com 55 na frente quando o número não tem DDI).
 - **Imprimir**: folha para a cozinha e a equipe numa aba nova (data, horário, convidados, cardápio, checklist, equipe), **sem valores nem chaves Pix**.
 - **Mais de um evento por dia** é permitido. Ao escolher uma data ocupada, o modal mostra um aviso (não bloqueia); ao salvar, pede uma confirmação ("Já existe evento neste dia: Fulano (19h). Salvar mesmo assim?"), só quando a data é nova para aquele evento. Lista, calendários, Pendentes, Relatório e planilha ordenam por data e horário (`ordemDataHora`; sem horário fica por último). A impressão mostra "Também neste dia" com os outros eventos da data (só nome e horário).
+
+- **Gerar contrato** (nos detalhes, seção Contrato): abre numa aba nova uma folha A4 com o texto do modelo preenchido, com botão "Imprimir / salvar em PDF". É diferente do contrato em PDF anexado (que continua igual).
+- **Modelo de contrato** (botão no cabeçalho): edita o texto do modelo, com a lista de marcadores (clicar insere no cursor) e "Restaurar modelo padrão" (só vale depois de "Salvar modelo"). Mostra quem salvou por último.
+
+## Modelo de contrato (`config/modeloContrato`)
+
+- `{ texto, alteradoPor, alteradoEm }` (e-mail de quem salvou e data ISO). Se o documento não existe, ou não pôde ser lido, vale o `MODELO_CONTRATO_PADRAO` do `index.html` (Churrascaria Leão do Parque: evento, valores, número de convidados, cancelamento, responsabilidades, assinaturas).
+- Lido com `onSnapshot` depois do login. No modo local fica no `localStorage` (`eventosLeaoModeloContrato`).
+- Marcadores: `{cliente}`, `{telefone}`, `{data}` (por extenso, ex.: 12 de outubro de 2026), `{hora}`, `{tipo}`, `{convidados}`, `{cardapio}`, `{valor_por_pessoa}`, `{total}`, `{sinal}`, `{falta_receber}`, `{hoje}`. Marcador desconhecido fica como está no contrato, para quem editou perceber.
+- O texto é puro: linha em branco separa parágrafos, quebra simples vira `<br>`, o primeiro parágrafo vira o título e parágrafos que começam com `___` ganham espaço de assinatura. Tudo passa por `escapeHtml()`.
 
 ## Dados (`eventos/{id}`)
 
@@ -82,11 +92,11 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - Tela de login (e-mail e senha) antes do app; "Esqueci a senha" manda o e-mail de redefinição do Firebase. O login fica salvo no aparelho (persistência padrão do Auth).
 - "Sair" no cabeçalho: desloga e apaga a cópia local do Firestore (`terminate` + `clearPersistence`).
 - O `onSnapshot` só começa depois do login. No modo local (`apiKey: "COLE_AQUI"`) não há login.
-- `firestore.rules` no repositório é a cópia versionada; o que vale é o publicado no console. Libera `eventos` e `contratoPartes` só para as UIDs da lista (`request.auth.uid in [...]`), porque com só `request.auth != null` qualquer pessoa poderia criar uma conta pela API pública.
+- `firestore.rules` no repositório é a cópia versionada; o que vale é o publicado no console. Libera `eventos`, `contratoPartes` e `config` só para as UIDs da lista (`request.auth.uid in [...]`), porque com só `request.auth != null` qualquer pessoa poderia criar uma conta pela API pública.
+- **Pendente no console:** publicar o `firestore.rules` com a regra nova `config/{doc}` (Firestore Database > Regras). Sem ela, "Salvar modelo" dá erro de permissão e o app usa o modelo padrão.
 - No console: desmarcar "Enable create (sign-up)" em Authentication > Settings > User actions.
 - Ordem: publicar o app com login **antes** de trocar as regras, senão o site para.
 - Limitações: sem saber quem fez o quê; para tirar o acesso de alguém, apagar/desativar a conta ou tirar a UID das regras.
 
 ## Ideias para depois
 
-- Gerar contrato a partir de um modelo.

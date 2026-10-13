@@ -48,7 +48,7 @@
   }
   header h1 { font-size: 17px; margin: 0; font-weight: 600; }
   header .sub { font-size: 12px; opacity: 0.75; }
-  .header-actions { display: flex; align-items: center; gap: 10px; }
+  .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .header-tabs { display: flex; gap: 4px; background: rgba(255,255,255,0.14); padding: 3px; border-radius: 8px; }
   .header-tab-btn { background: transparent; border: none; color: rgba(255,255,255,0.8); font-size: 13px; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
   .header-tab-btn.active { background: #fff; color: var(--verde-escuro); font-weight: 600; }
@@ -274,6 +274,15 @@
   .contrato-acoes .btn { flex: 1; padding: 6px 8px; font-size: 12px; }
   .contrato-acoes .excluir { color: var(--bordo); }
   .contrato-status { font-size: 12px; color: var(--text-mut); margin: 0; }
+  .gerar-contrato { width: 100%; margin-top: 6px; font-size: 12px; }
+
+  /* Modelo de contrato */
+  .modelo-ajuda { font-size: 12px; color: var(--text-mut); margin: 0 0 10px; }
+  .marcadores { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .marcador { font-family: Consolas, monospace; font-size: 11px; padding: 3px 7px; border-radius: 5px; border: 1px solid var(--border); background: #eef4ef; color: var(--verde-escuro); cursor: pointer; }
+  #modeloTexto { font-family: Consolas, monospace; font-size: 13px; line-height: 1.45; resize: vertical; }
+  .modelo-info { font-size: 11px; color: var(--text-mut); margin: 0; }
+  #modeloOverlay .modal-actions { flex-wrap: wrap; }
 
   /* Filtros */
   .filtros { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -331,6 +340,7 @@
       <button class="header-tab-btn" id="tabRelatorio" onclick="mudarVisao('relatorio')">Relatório</button>
     </div>
     <button class="btn primary" onclick="abrirModal()">+ Novo evento</button>
+    <button class="btn btn-sair" onclick="abrirModelo()" title="Texto usado em Gerar contrato">📝 Modelo de contrato</button>
     <button class="btn btn-sair" id="btnSair" onclick="sair()" style="display:none;">Sair</button>
   </div>
 </header>
@@ -499,6 +509,22 @@
     <div id="diaLista"></div>
     <div class="modal-actions">
       <button class="btn" onclick="fecharDia()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODELO DE CONTRATO (usado em "Gerar contrato" nos detalhes do evento) -->
+<div class="overlay" id="modeloOverlay">
+  <div class="modal" style="max-width:720px;">
+    <h2>Modelo de contrato</h2>
+    <p class="modelo-ajuda">Texto usado no botão <strong>Gerar contrato</strong> dos detalhes do evento. Os marcadores entre chaves são trocados pelos dados do evento. Clique num marcador para inserir onde está o cursor. Deixe uma linha em branco entre os parágrafos; o primeiro parágrafo vira o título.</p>
+    <div class="marcadores" id="modeloMarcadores"></div>
+    <div class="field"><textarea id="modeloTexto" rows="18" spellcheck="true"></textarea></div>
+    <p class="modelo-info" id="modeloInfo"></p>
+    <div class="modal-actions">
+      <button class="btn" onclick="restaurarModeloPadrao()">Restaurar modelo padrão</button>
+      <button class="btn" onclick="fecharModelo()">Cancelar</button>
+      <button class="btn primary" id="btnSalvarModelo" onclick="salvarModelo()">Salvar modelo</button>
     </div>
   </div>
 </div>
@@ -1397,6 +1423,7 @@ function abrirVisualizacao(id) {
 
     <p class="view-secao-titulo">Contrato</p>
     <div id="contratoView"></div>
+    <button type="button" class="btn gerar-contrato" onclick="gerarContrato()">📝 Gerar contrato (do modelo)</button>
 
     <p class="view-secao-titulo">Equipe escalada</p>
     ${equipeHtml}
@@ -1454,6 +1481,199 @@ function imprimirEvento() {
     <script>window.onload = () => window.print();<\/script>
     </body></html>`);
   aba.document.close();
+}
+
+/* ---------- Modelo de contrato ----------
+   O texto fica em config/modeloContrato = { texto, alteradoPor, alteradoEm } no Firestore
+   (no modo local, no localStorage). Sem modelo salvo, vale o MODELO_CONTRATO_PADRAO.
+   É texto puro: linha em branco separa parágrafos, o primeiro parágrafo vira o título. */
+
+const MODELO_CONTRATO_PADRAO = `CONTRATO DE PRESTAÇÃO DE SERVIÇOS PARA EVENTO
+
+CONTRATADA: Churrascaria Leão do Parque.
+CONTRATANTE: {cliente}, telefone {telefone}.
+
+As partes acima combinam a realização de um evento nas dependências da CONTRATADA, nas condições a seguir.
+
+1. DO EVENTO
+Tipo de evento: {tipo}.
+Data: {data}, com início às {hora}.
+Número de convidados: {convidados}.
+Cardápio: {cardapio}.
+
+2. DO VALOR E DO PAGAMENTO
+Valor por pessoa: {valor_por_pessoa}.
+Valor total: {total}, calculado pelo número de convidados informado acima.
+Sinal pago na reserva: {sinal}.
+Saldo a pagar: {falta_receber}, que deve ser quitado até a data do evento.
+
+3. DO NÚMERO DE CONVIDADOS
+O número final de convidados deve ser confirmado com antecedência mínima de 5 (cinco) dias. Será cobrado, no mínimo, o número de convidados confirmado. Convidados além desse número serão cobrados pelo mesmo valor por pessoa.
+
+4. DO CANCELAMENTO E DA TROCA DE DATA
+Em caso de cancelamento pelo CONTRATANTE, o sinal não será devolvido. A troca de data depende da disponibilidade da CONTRATADA e deve ser pedida com antecedência mínima de 15 (quinze) dias.
+
+5. DAS RESPONSABILIDADES
+A CONTRATADA se compromete a fornecer o espaço, o cardápio e a equipe de atendimento combinados. O CONTRATANTE responde por danos causados ao espaço e aos equipamentos por seus convidados. Decoração, bolo, bebidas ou outros itens trazidos pelo CONTRATANTE devem ser combinados antes com a CONTRATADA.
+
+6. DISPOSIÇÕES GERAIS
+Qualquer alteração deste contrato deve ser combinada por escrito entre as partes.
+
+E, por estarem de acordo, as partes assinam este contrato em duas vias de igual teor.
+
+______________________________, {hoje}.
+
+________________________________________
+{cliente}
+CONTRATANTE
+
+________________________________________
+Churrascaria Leão do Parque
+CONTRATADA`;
+
+const MARCADORES_CONTRATO = ['cliente', 'telefone', 'data', 'hora', 'tipo', 'convidados', 'cardapio',
+  'valor_por_pessoa', 'total', 'sinal', 'falta_receber', 'hoje'];
+
+let modeloContrato = null;      // { texto, alteradoPor, alteradoEm } salvo; null = usar o padrão
+let modeloErroLeitura = false;  // as regras ainda não liberam config/ (ou outro erro ao ler)
+let pararModelo = null;
+const CHAVE_MODELO_LOCAL = 'eventosLeaoModeloContrato';
+
+if (!usandoFirestore) {
+  try { modeloContrato = JSON.parse(localStorage.getItem(CHAVE_MODELO_LOCAL) || 'null'); } catch (e) { modeloContrato = null; }
+}
+
+function textoModelo() {
+  return (modeloContrato && modeloContrato.texto && modeloContrato.texto.trim()) ? modeloContrato.texto : MODELO_CONTRATO_PADRAO;
+}
+
+// Quem está usando o app (e-mail do login); no modo local, "modo local"
+function autorAtual() {
+  if (!usandoFirestore) return 'modo local';
+  const u = auth && auth.currentUser;
+  return (u && u.email) || 'desconhecido';
+}
+
+// Data e hora em dd/mm/aaaa hh:mm (aceita texto ISO ou Timestamp do Firestore)
+function fmtDataHora(v) {
+  if (!v) return '';
+  const d = typeof v.toDate === 'function' ? v.toDate() : new Date(v);
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// "2026-10-12" -> "12 de outubro de 2026"
+function dataPorExtenso(dataStr) {
+  if (!dataStr) return 'a definir';
+  const d = new Date(dataStr + 'T00:00:00');
+  return `${d.getDate()} de ${MESES_COMPLETOS[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+function preencherModelo(texto, ev) {
+  const valores = {
+    cliente: ev.cliente || '',
+    telefone: ev.telefone || 'não informado',
+    data: dataPorExtenso(ev.data),
+    hora: ev.hora || 'horário a combinar',
+    tipo: ev.tipo || '',
+    convidados: String(Number(ev.convidados) || 0),
+    cardapio: ev.cardapio || 'a definir',
+    valor_por_pessoa: fmtMoeda(Number(ev.valor) || 0),
+    total: fmtMoeda(totalEvento(ev)),
+    sinal: fmtMoeda(Number(ev.sinal) || 0),
+    falta_receber: fmtMoeda(faltaReceber(ev)),
+    hoje: dataPorExtenso(hojeStr())
+  };
+  // marcador desconhecido fica como está, para quem editou o modelo perceber
+  return texto.replace(/\{(\w+)\}/g, (m, chave) => Object.prototype.hasOwnProperty.call(valores, chave) ? valores[chave] : m);
+}
+
+// Abre o contrato preenchido numa aba nova, pronto para imprimir ou salvar em PDF
+function gerarContrato() {
+  const ev = eventos.find(e => e.id === viewId);
+  if (!ev) return;
+  const aba = window.open('', '_blank');
+  if (!aba) { alert('O navegador bloqueou a nova aba. Libere pop-ups para este site e tente de novo.'); return; }
+  const blocos = preencherModelo(textoModelo(), ev).replace(/\r\n/g, '\n').split(/\n[ \t]*\n/).map(b => b.trim()).filter(Boolean);
+  // o texto é puro: tudo passa pelo escapeHtml; quebra de linha simples vira <br>
+  const corpo = blocos.map((b, i) => {
+    const html = escapeHtml(b).replace(/\n/g, '<br>');
+    if (i === 0) return `<h1>${html}</h1>`;
+    return `<p${b.startsWith('___') ? ' class="assinatura"' : ''}>${html}</p>`;
+  }).join('\n');
+  aba.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Contrato - ${escapeHtml(ev.cliente)}</title>
+    <style>
+      @page { size: A4; margin: 2cm; }
+      body { font-family: Georgia, 'Times New Roman', serif; color: #111; font-size: 14px; line-height: 1.55; max-width: 720px; margin: 24px auto; padding: 0 16px; }
+      h1 { font-size: 17px; text-align: center; margin: 0 0 22px; }
+      p { margin: 0 0 12px; text-align: justify; }
+      p.assinatura { margin-top: 44px; text-align: left; }
+      .barra { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; text-align: right; margin-bottom: 16px; }
+      .barra button { font-size: 14px; padding: 8px 14px; border-radius: 6px; border: 1px solid #1f4d3a; background: #1f4d3a; color: #fff; cursor: pointer; }
+      @media print { .barra { display: none; } body { margin: 0; padding: 0; max-width: none; } }
+    </style></head><body>
+    <div class="barra"><button onclick="window.print()">🖨 Imprimir / salvar em PDF</button></div>
+    ${corpo}
+    </body></html>`);
+  aba.document.close();
+}
+
+function abrirModelo() {
+  document.getElementById('modeloMarcadores').innerHTML = MARCADORES_CONTRATO
+    .map(m => `<span class="marcador" onclick="inserirMarcador('${m}')">{${m}}</span>`).join('');
+  document.getElementById('modeloTexto').value = textoModelo();
+  let info;
+  if (modeloErroLeitura) info = 'Não foi possível ler o modelo salvo (confira se as regras do Firestore liberam "config"). Mostrando o modelo padrão.';
+  else if (modeloContrato && modeloContrato.texto) info = `Modelo salvo${modeloContrato.alteradoPor ? ' por ' + modeloContrato.alteradoPor : ''}${modeloContrato.alteradoEm ? ' em ' + fmtDataHora(modeloContrato.alteradoEm) : ''}.`;
+  else info = 'Usando o modelo padrão.';
+  document.getElementById('modeloInfo').textContent = info;
+  document.getElementById('modeloOverlay').classList.add('open');
+}
+
+function fecharModelo() {
+  document.getElementById('modeloOverlay').classList.remove('open');
+}
+
+function inserirMarcador(m) {
+  const ta = document.getElementById('modeloTexto');
+  ta.setRangeText('{' + m + '}', ta.selectionStart, ta.selectionEnd, 'end');
+  ta.focus();
+}
+
+function restaurarModeloPadrao() {
+  if (!confirm('Trocar o texto pelo modelo padrão? O que está escrito aqui será perdido (só vale depois de clicar em Salvar modelo).')) return;
+  document.getElementById('modeloTexto').value = MODELO_CONTRATO_PADRAO;
+}
+
+async function salvarModelo() {
+  const texto = document.getElementById('modeloTexto').value;
+  if (!texto.trim()) { alert('O modelo não pode ficar vazio. Use "Restaurar modelo padrão" para voltar ao texto original.'); return; }
+  const dados = { texto, alteradoPor: autorAtual(), alteradoEm: new Date().toISOString() };
+  if (usandoFirestore) {
+    const btn = document.getElementById('btnSalvarModelo');
+    btn.disabled = true;
+    btn.textContent = 'Salvando…';
+    let r;
+    try {
+      r = await aguardarGravacao(db.collection('config').doc('modeloContrato').set(dados));
+    } catch (e) {
+      console.error('Erro ao salvar o modelo:', e);
+      alert(e.code === 'permission-denied'
+        ? 'Sem permissão para salvar o modelo. As regras do Firestore publicadas no console precisam liberar "config" (veja o firestore.rules).'
+        : 'Não foi possível salvar o modelo. Confira a internet e tente de novo.');
+      return;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Salvar modelo';
+    }
+    if (r === 'pendente') alert(AVISO_PENDENTE);
+  } else {
+    modeloContrato = dados;
+    try { localStorage.setItem(CHAVE_MODELO_LOCAL, JSON.stringify(dados)); } catch (e) {}
+  }
+  fecharModelo();
 }
 
 function fecharVisualizacao() {
@@ -1768,8 +1988,10 @@ let pararLeitura = null;
 if (usandoFirestore) {
   auth.onAuthStateChanged(usuario => {
     if (pararLeitura) { pararLeitura(); pararLeitura = null; }
+    if (pararModelo) { pararModelo(); pararModelo = null; }
     if (!usuario) {
       eventos = [];
+      modeloContrato = null;
       mostrarTela('deslogado');
       return;
     }
@@ -1785,6 +2007,15 @@ if (usandoFirestore) {
       if (err.code === 'permission-denied') {
         alert('Esta conta não tem permissão para ver os eventos. Confira a UID nas regras do Firestore.');
       }
+    });
+    // modelo de contrato: se não existir (ou as regras ainda não liberarem config/), usa o padrão
+    pararModelo = db.collection('config').doc('modeloContrato').onSnapshot(doc => {
+      modeloContrato = doc.exists ? doc.data() : null;
+      modeloErroLeitura = false;
+    }, err => {
+      console.warn('Modelo de contrato não lido; usando o padrão:', err.code);
+      modeloContrato = null;
+      modeloErroLeitura = true;
     });
   });
 } else {

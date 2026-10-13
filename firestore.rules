@@ -26,6 +26,11 @@ service cloud.firestore {
       }
     }
 
+    // configurações do app, ex.: config/modeloContrato (texto do "Gerar contrato")
+    match /config/{doc} {
+      allow read, write: if autorizado();
+    }
+
     // qualquer outro caminho fica fechado
   }
 }
