@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Eventos - Leão do Parque</title>
+<!-- Instalar no celular como app (PWA). Caminhos relativos: o site fica em /eventos-leao/ no GitHub Pages -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#143327" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Eventos" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <style>
   :root {
     --verde: #1f4d3a;
@@ -1679,6 +1688,11 @@ async function sair() {
 }
 
 /* ---------- Inicialização ---------- */
+
+// Service worker: guarda o casco do app para abrir sem internet e permite instalar no celular
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('./sw.js').catch(e => console.warn('Service worker não registrado:', e));
+}
 
 let pararLeitura = null;
 

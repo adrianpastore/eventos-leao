@@ -55,6 +55,14 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - Num evento existente, Substituir e Excluir valem na hora, mesmo que o modal seja cancelado.
 - As regras do Firestore precisam liberar a subcoleção `contratoPartes` (testado no site publicado em 01/10/2026: salvar, excluir e anexar contrato funcionaram).
 
+## Instalar no celular (PWA)
+
+- `manifest.webmanifest` (nome "Eventos · Leão do Parque", curto "Eventos", `display: standalone`, cores do cabeçalho `#143327` e do fundo `#f6f5f1`) e ícones em `icons/` (192, 512 — também usado como *maskable* — e `apple-touch-icon` 180). Os ícones foram gerados com PowerShell/System.Drawing: folha de calendário com faixa bordô e "LP".
+- Caminhos relativos (`start_url` e `scope` = `./`), porque o site fica em `/eventos-leao/` no GitHub Pages.
+- `sw.js` guarda só o casco (página, manifesto, ícones). Sempre tenta a rede primeiro e só usa o cache sem internet, então nunca prende uma versão velha. **Não intercepta** nada de outro domínio (Firebase, googleapis, gstatic): os dados offline continuam com o `enablePersistence`. Ao mudar a lista de arquivos do casco, trocar o nome do cache (`eventos-leao-casco-vN`).
+- iPhone: Safari > Compartilhar > "Adicionar à Tela de Início" (metas `apple-mobile-web-app-*`). Android: o Chrome oferece "Instalar app".
+- O SW não é registrado em `file://`; para testar, servir a pasta por HTTP (localhost). No Chrome headless, usar um perfil (`--user-data-dir`) em caminho curto, senão o Cache API falha no Windows.
+
 ## Sem internet
 
 - `enablePersistence` guarda os dados no aparelho. Sem internet, o app abre com o que já tinha e as gravações ficam na fila até a conexão voltar.
@@ -80,6 +88,4 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 
 ## Ideias para depois
 
-- Exportar o relatório para planilha.
-- Instalar no celular como app (PWA).
 - Mais de um evento por dia; gerar contrato a partir de um modelo.
