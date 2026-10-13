@@ -1033,10 +1033,11 @@ function numeroBR(v) {
 }
 
 // Um campo do CSV: entre aspas quando tem ; aspas ou quebra de linha.
-// Texto começando com = + - @ ganha um ' na frente para o Excel não tratar como fórmula.
+// Texto começando com = + - @ ganha um ' na frente para o Excel não tratar como fórmula
+// (número negativo como "-5,00" fica como está, para continuar sendo número).
 function campoCsv(v) {
   let s = String(v ?? '');
-  if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = "'" + s;
+  if (typeof v === 'string' && /^[=+\-@]/.test(s) && !/^-\d+(,\d+)?$/.test(s)) s = "'" + s;
   return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
