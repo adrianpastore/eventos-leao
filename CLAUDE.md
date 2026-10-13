@@ -22,6 +22,7 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 - **Filtros** (Quadro e Relatório): busca por cliente, sem diferenciar acentos, e filtro por tipo. "Outros" pega todo tipo fora de `TIPOS_FIXOS`. Valem só para o mês selecionado.
 - **Pendentes**: aviso no topo do Quadro com os eventos de data passada que não estão como Concluído, com o botão "Marcar concluído" (pede confirmação se ainda falta receber). Como os meses passados ficam bloqueados no Quadro, esse aviso é o caminho para chegar neles.
 - **Relatório**: totais do mês (eventos, faturamento, falta receber, custo da equipe, ticket médio, convidados) e detalhamento.
+  - **Exportar planilha**: baixa `eventos-AAAA-MM.csv` com uma linha por evento do mês, respeitando os filtros. Formato do Excel em português: separador `;`, BOM UTF-8, vírgula decimal, datas dd/mm/aaaa. Campos com `;`, aspas ou quebra de linha vão entre aspas; texto começando com `= + - @` ganha um `'` na frente (para o Excel não tratar como fórmula, ex.: telefone `+55...`).
 - **Modal do evento** (criar/editar, com "Excluir evento" ao editar, que também apaga o contrato) e **detalhes** (somente leitura, com Editar e Imprimir).
 - **Detalhes**: total do evento, falta receber, custo da equipe e botão de WhatsApp (`wa.me`, com 55 na frente quando o número não tem DDI).
 - **Imprimir**: folha para a cozinha e a equipe numa aba nova (data, horário, convidados, cardápio, checklist, equipe), **sem valores nem chaves Pix**.

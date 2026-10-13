@@ -80,6 +80,7 @@
   .btn.primary { background: var(--verde); color: #fff; border-color: var(--verde); }
 
   /* Relatório */
+  .relatorio-topo { display: flex; justify-content: flex-end; margin-bottom: 10px; }
   .relatorio-totais { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 18px; }
   @media (min-width: 700px) {
     .relatorio-totais { grid-template-columns: repeat(4, 1fr); }
@@ -602,6 +603,11 @@ function faltaReceber(e) { return Math.max(0, totalEvento(e) - (Number(e.sinal) 
 function custoEquipe(e) { return (e.equipe || []).reduce((s, f) => s + (Number(f.valor) || 0), 0); }
 function fmtMoeda(v) { return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+// Ordena por data e, no mesmo dia, por horário (sem horário fica por último)
+function ordemDataHora(a, b) {
+  return ((a.data || '') + (a.hora || '99:99')).localeCompare((b.data || '') + (b.hora || '99:99'));
+}
+
 function statusInfo(id) {
   return STATUS.find(s => s.id === id) || STATUS[0];
 }
@@ -873,7 +879,7 @@ function renderCalMobile() {
 }
 
 function renderRelatorio() {
-  const evs = eventosDoMes().sort((a,b) => a.data.localeCompare(b.data));
+  const evs = eventosDoMes().sort(ordemDataHora);
   const wrap = document.getElementById('relatorio');
 
   const totalEventos = evs.length;
@@ -907,6 +913,9 @@ function renderRelatorio() {
     : `<p class="relatorio-vazio">${filtroAtivo() ? 'Nenhum evento neste mês com esse filtro.' : 'Nenhum evento neste mês.'}</p>`;
 
   wrap.innerHTML = `
+    <div class="relatorio-topo">
+      <button class="btn" onclick="exportarPlanilha()">⬇ Exportar planilha</button>
+    </div>
     <div class="relatorio-totais">
       <div class="totais-card"><p class="label">Eventos no mês</p><p class="valor">${totalEventos}</p></div>
       <div class="totais-card"><p class="label">Faturamento total</p><p class="valor">${fmtMoeda(faturamentoTotal)}</p></div>
@@ -918,6 +927,50 @@ function renderRelatorio() {
     <p class="relatorio-lista-titulo">Detalhamento</p>
     ${linhasHtml}
   `;
+}
+
+/* ---------- Exportar planilha (CSV para o Excel em português) ---------- */
+
+function dataBR(dataStr) {
+  const [a, m, d] = String(dataStr || '').split('-');
+  return d ? `${d}/${m}/${a}` : '';
+}
+
+function numeroBR(v) {
+  return (Number(v) || 0).toFixed(2).replace('.', ',');
+}
+
+// Um campo do CSV: entre aspas quando tem ; aspas ou quebra de linha.
+// Texto começando com = + - @ ganha um ' na frente para o Excel não tratar como fórmula.
+function campoCsv(v) {
+  let s = String(v ?? '');
+  if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = "'" + s;
+  return /[";\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportarPlanilha() {
+  const evs = eventosDoMes().sort(ordemDataHora);
+  if (evs.length === 0) {
+    alert(filtroAtivo() ? 'Nenhum evento neste mês com esse filtro.' : 'Nenhum evento neste mês.');
+    return;
+  }
+  const cabecalho = ['Data', 'Hora', 'Cliente', 'Telefone', 'Tipo', 'Cardápio', 'Convidados', 'Valor por pessoa',
+    'Total', 'Sinal', 'Falta receber', 'Custo da equipe', 'Status'];
+  const linhas = evs.map(e => [
+    dataBR(e.data), e.hora || '', e.cliente || '', e.telefone || '', e.tipo || '', e.cardapio || 'A definir',
+    Number(e.convidados) || 0, numeroBR(e.valor), numeroBR(totalEvento(e)), numeroBR(e.sinal),
+    numeroBR(faltaReceber(e)), numeroBR(custoEquipe(e)), statusInfo(e.status).label
+  ]);
+  // o BOM (﻿) faz o Excel reconhecer os acentos (UTF-8); o ; é o separador do Excel em português
+  const csv = '﻿' + [cabecalho, ...linhas].map(l => l.map(campoCsv).join(';')).join('\r\n') + '\r\n';
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `eventos-${anoAtivo}-${String(mesAtivo + 1).padStart(2, '0')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function escapeHtml(s) {
