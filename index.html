@@ -128,7 +128,16 @@
   }
   .cal-mobile-day .faixa-evento {
     position: absolute; left: 2px; right: 2px; top: 24%; height: 52%; border-radius: 6px; z-index: 0;
+    display: flex; overflow: hidden;
   }
+  .cal-mobile-day .faixa-evento span { flex: 1; }
+  .cal-mobile-day .qtd {
+    position: absolute; top: 1px; right: 3px; z-index: 1; font-size: 9px; font-weight: 700;
+    background: var(--bordo); color: #fff; border-radius: 8px; padding: 0 4px; line-height: 14px;
+  }
+  .dia-evento { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+  .dia-evento .hora { font-weight: 700; min-width: 48px; }
+  .dia-evento .info { flex: 1; font-size: 13px; }
   .cal-mobile-day .num { position: relative; z-index: 1; }
   .cal-mobile-day.tem-evento { cursor: pointer; }
   .cal-mobile-day.tem-evento .num { color: #fff; font-weight: 700; }
@@ -162,9 +171,9 @@
   .cal-head, .cal-day { background: var(--card); min-height: 96px; padding: 5px; }
   .cal-head { min-height: auto; text-align: center; font-size: 11px; color: var(--text-mut); padding: 6px; }
   .cal-day .num { font-size: 11px; color: var(--text-mut); }
-  .cal-day.tem-evento { padding: 0; }
+  .cal-day.tem-evento { padding: 0; display: flex; flex-direction: column; gap: 1px; background: var(--border); }
   .cal-day .evt-bloco {
-    height: 100%;
+    flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -175,6 +184,8 @@
   .cal-day .evt-bloco .evt-num { font-size: 11px; opacity: 0.85; }
   .cal-day .evt-bloco .evt-nome { font-size: 12px; font-weight: 600; line-height: 1.25; margin-top: 2px; }
   .cal-day .evt-bloco .evt-detalhe { font-size: 10px; opacity: 0.9; margin-top: 2px; }
+  .cal-day.varios .evt-bloco { padding: 4px 6px; justify-content: flex-start; }
+  .cal-day.varios .evt-bloco .evt-nome { font-size: 11px; }
 
   @media (min-width: 860px) {
     .lista { display: none; }
@@ -481,6 +492,17 @@
   </div>
 </div>
 
+<!-- EVENTOS DE UM DIA (calendário do celular, quando o dia tem mais de um evento) -->
+<div class="overlay" id="diaOverlay" onclick="if (event.target === this) fecharDia()">
+  <div class="modal" style="max-width:420px;">
+    <h2 id="diaTitulo">Eventos do dia</h2>
+    <div id="diaLista"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="fecharDia()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="inputContrato" accept="application/pdf,.pdf" style="display:none;" onchange="contratoEscolhido(this)" />
 
 <!-- Firebase (compat SDK, mais simples de usar sem bundler) -->
@@ -692,7 +714,7 @@ function filtroAtivo() {
 function renderLista() {
   const wrap = document.getElementById('lista');
   wrap.innerHTML = '';
-  const evs = eventosDoMes().sort((a,b) => (a.data+a.hora).localeCompare(b.data+b.hora));
+  const evs = eventosDoMes().sort(ordemDataHora);
   if (evs.length === 0) {
     wrap.innerHTML = `<p style="color:var(--text-mut); font-size:13px;">${filtroAtivo() ? 'Nenhum evento neste mês com esse filtro.' : 'Nenhum evento neste mês.'}</p>`;
     return;
@@ -751,24 +773,26 @@ function renderCalendario() {
   }
   for (let dia = 1; dia <= diasNoMes; dia++) {
     const cell = document.createElement('div');
-    const doDia = evs.filter(e => new Date(e.data + 'T00:00:00').getDate() === dia);
-    const evento = doDia[0]; // só 1 evento por dia, na prática
+    const doDia = evs.filter(e => new Date(e.data + 'T00:00:00').getDate() === dia).sort(ordemDataHora);
 
-    if (evento) {
-      const st = statusInfo(evento.status);
-      cell.className = 'cal-day tem-evento';
-      const bloco = document.createElement('div');
-      bloco.className = 'evt-bloco';
-      bloco.style.background = st.color;
-      bloco.innerHTML = `
-        <div class="evt-num">${dia}</div>
-        <div>
-          <div class="evt-nome">${escapeHtml(evento.cliente)}</div>
-          <div class="evt-detalhe">${evento.hora || ''} · ${escapeHtml(evento.tipo)}</div>
-        </div>
-      `;
-      bloco.onclick = () => abrirVisualizacao(evento.id);
-      cell.appendChild(bloco);
+    if (doDia.length) {
+      // um bloco por evento, empilhados por horário; o número do dia vai no primeiro
+      cell.className = 'cal-day tem-evento' + (doDia.length > 1 ? ' varios' : '');
+      doDia.forEach((evento, i) => {
+        const st = statusInfo(evento.status);
+        const bloco = document.createElement('div');
+        bloco.className = 'evt-bloco';
+        bloco.style.background = st.color;
+        bloco.innerHTML = `
+          ${i === 0 ? `<div class="evt-num">${dia}</div>` : ''}
+          <div>
+            <div class="evt-nome">${escapeHtml(evento.cliente)}</div>
+            <div class="evt-detalhe">${evento.hora || ''} · ${escapeHtml(evento.tipo)}</div>
+          </div>
+        `;
+        bloco.onclick = () => abrirVisualizacao(evento.id);
+        cell.appendChild(bloco);
+      });
     } else {
       cell.className = 'cal-day';
       const num = document.createElement('div');
@@ -818,7 +842,7 @@ function renderPendentes(mostrar) {
   const box = document.getElementById('pendentes');
   const pend = eventos
     .filter(e => e.data && e.data < hojeStr() && e.status !== 'concluido')
-    .sort((a, b) => a.data.localeCompare(b.data));
+    .sort(ordemDataHora);
   if (!mostrar || pend.length === 0) { box.style.display = 'none'; return; }
   const aberto = box.open;
   box.style.display = '';
@@ -830,7 +854,7 @@ function renderPendentes(mostrar) {
       <div class="pendente-linha">
         <div class="info" onclick="abrirVisualizacao('${e.id}')">
           <div>${escapeHtml(e.cliente)}</div>
-          <div class="meta">${formatarDiaLabel(e.data)} · ${statusInfo(e.status).label}${falta > 0 ? ' · falta receber ' + fmtMoeda(falta) : ''}</div>
+          <div class="meta">${formatarDiaLabel(e.data)}${e.hora ? ' ' + e.hora : ''} · ${statusInfo(e.status).label}${falta > 0 ? ' · falta receber ' + fmtMoeda(falta) : ''}</div>
         </div>
         <button class="btn" onclick="marcarConcluido('${e.id}')">Marcar concluído</button>
       </div>`;
@@ -878,13 +902,39 @@ function renderCalMobile() {
   }
   for (let dia = 1; dia <= diasNoMes; dia++) {
     const dataStr = `${anoAtivo}-${String(mesAtivo + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
-    const evento = evs.find(e => e.data === dataStr);
+    const doDia = evs.filter(e => e.data === dataStr).sort(ordemDataHora);
     const cell = document.createElement('div');
-    cell.className = 'cal-mobile-day' + (evento ? ' tem-evento' : '') + (dataStr === hojeStr() ? ' hoje' : '');
-    cell.innerHTML = (evento ? `<span class="faixa-evento" style="background:${statusInfo(evento.status).color}"></span>` : '') + `<span class="num">${dia}</span>`;
-    if (evento) cell.onclick = () => abrirVisualizacao(evento.id);
+    cell.className = 'cal-mobile-day' + (doDia.length ? ' tem-evento' : '') + (dataStr === hojeStr() ? ' hoje' : '');
+    // vários eventos no dia: a faixa vira listras, uma cor de status por evento, e aparece a quantidade
+    const faixa = doDia.length
+      ? `<span class="faixa-evento">${doDia.map(e => `<span style="background:${statusInfo(e.status).color}"></span>`).join('')}</span>`
+      : '';
+    const qtd = doDia.length > 1 ? `<span class="qtd">${doDia.length}</span>` : '';
+    cell.innerHTML = faixa + `<span class="num">${dia}</span>` + qtd;
+    if (doDia.length === 1) cell.onclick = () => abrirVisualizacao(doDia[0].id);
+    if (doDia.length > 1) cell.onclick = () => abrirDia(dataStr);
     grid.appendChild(cell);
   }
+}
+
+// Lista os eventos de um dia para escolher qual abrir (usado quando o dia tem mais de um)
+function abrirDia(dataStr) {
+  const doDia = eventos.filter(e => e.data === dataStr && passaNoFiltro(e)).sort(ordemDataHora);
+  document.getElementById('diaTitulo').textContent = formatarDataCompleta(dataStr);
+  document.getElementById('diaLista').innerHTML = doDia.map(e => {
+    const st = statusInfo(e.status);
+    return `
+      <div class="dia-evento" style="background:${st.bg}; color:${st.text};" onclick="fecharDia(); abrirVisualizacao('${e.id}')">
+        <span class="hora">${e.hora || '—'}</span>
+        <span class="info"><strong>${escapeHtml(e.cliente)}</strong><br>${escapeHtml(e.tipo)} · ${e.convidados || 0} pessoas</span>
+        <span class="status-pill" style="color:${st.text}">${st.label}</span>
+      </div>`;
+  }).join('');
+  document.getElementById('diaOverlay').classList.add('open');
+}
+
+function fecharDia() {
+  document.getElementById('diaOverlay').classList.remove('open');
 }
 
 function renderRelatorio() {
@@ -912,7 +962,7 @@ function renderRelatorio() {
           <div class="relatorio-linha">
             <div class="info">
               <p class="nome">${escapeHtml(e.cliente)}</p>
-              <p class="meta">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} · ${escapeHtml(e.tipo)} · ${e.convidados || 0} convidados</p>
+              <p class="meta">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}${e.hora ? ' ' + e.hora : ''} · ${escapeHtml(e.tipo)} · ${e.convidados || 0} convidados</p>
               ${extras ? `<p class="meta">${extras}</p>` : ''}
             </div>
             <span class="valor-evento">${fmtMoeda(totalEvento(e))}</span>
@@ -1152,13 +1202,28 @@ function tipoEscolhido() {
   return document.getElementById('fTipoOutro').value.trim() || 'Outro';
 }
 
+// "19:00" -> "19h", "19:30" -> "19h30"
+function fmtHoraCurta(hora) {
+  if (!hora) return 'sem horário';
+  const [h, m] = hora.split(':');
+  return `${Number(h)}h${m && m !== '00' ? m : ''}`;
+}
+
+// Outros eventos na mesma data (pode haver mais de um evento por dia; o app só avisa)
+function outrosEventosNoDia(data, id) {
+  return eventos.filter(e => e.data === data && e.id !== id).sort(ordemDataHora);
+}
+
+function descreverEventos(lista) {
+  return lista.map(e => `${e.cliente} (${fmtHoraCurta(e.hora)})`).join(', ');
+}
+
 function verificarConflitoData() {
   const data = document.getElementById('fData').value;
   const aviso = document.getElementById('avisoData');
-  if (!data) { aviso.style.display = 'none'; return; }
-  const conflito = eventos.find(e => e.data === data && e.id !== editandoId);
-  if (conflito) {
-    aviso.textContent = `Já existe um evento marcado nesse dia: ${conflito.cliente} (${conflito.hora || 'sem horário'}).`;
+  const outros = data ? outrosEventosNoDia(data, editandoId) : [];
+  if (outros.length) {
+    aviso.textContent = `Já existe evento neste dia: ${descreverEventos(outros)}. Dá para salvar mesmo assim.`;
     aviso.style.display = 'block';
   } else {
     aviso.style.display = 'none';
@@ -1177,9 +1242,11 @@ async function salvarEvento() {
     alert('Preencha ao menos o nome do cliente e a data do evento.');
     return;
   }
-  const conflito = eventos.find(e => e.data === data && e.id !== editandoId);
-  if (conflito) {
-    alert(`Já existe um evento marcado nesse dia (${conflito.cliente}, ${conflito.hora || 'sem horário'}). Escolha outra data.`);
+  // Mais de um evento no mesmo dia é permitido: só pede confirmação quando a data é nova para este evento
+  const anterior = editandoId ? eventos.find(e => e.id === editandoId) : null;
+  const outros = outrosEventosNoDia(data, editandoId);
+  if (outros.length && (!anterior || anterior.data !== data)
+      && !confirm(`Já existe evento neste dia: ${descreverEventos(outros)}. Salvar mesmo assim?`)) {
     return;
   }
 
@@ -1354,6 +1421,7 @@ function imprimirEvento() {
   const aba = window.open('', '_blank');
   if (!aba) { alert('O navegador bloqueou a nova aba. Libere pop-ups para este site e tente de novo.'); return; }
   const linha = (rotulo, valor) => `<tr><th>${rotulo}</th><td>${valor}</td></tr>`;
+  const outros = outrosEventosNoDia(ev.data, ev.id); // a cozinha precisa saber se há outro evento no mesmo dia
   const checklistHtml = (ev.checklist || []).length
     ? '<ul>' + ev.checklist.map(i => `<li>${i.feito ? '☑' : '☐'} ${escapeHtml(i.texto)}</li>`).join('') + '</ul>'
     : '<p class="mut">Nenhum item.</p>';
@@ -1379,6 +1447,7 @@ function imprimirEvento() {
       ${linha('Convidados', ev.convidados || 0)}
       ${linha('Cardápio', ev.cardapio ? escapeHtml(ev.cardapio) : 'a definir')}
       ${linha('Telefone', ev.telefone ? escapeHtml(ev.telefone) : '—')}
+      ${outros.length ? linha('Também neste dia', escapeHtml(descreverEventos(outros))) : ''}
     </table>
     <h2>Checklist / observações</h2>${checklistHtml}
     <h2>Equipe escalada</h2>${equipeHtml}

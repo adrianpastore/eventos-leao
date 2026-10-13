@@ -17,7 +17,8 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 
 - **Quadro**: carrossel de meses (ano atual + próximo; meses passados bloqueados) e eventos do mês.
   - Celular: alterna Lista / Calendário (a preferência fica no `localStorage`).
-  - Computador (≥ 860px): calendário em grade.
+  - Computador (≥ 860px): calendário em grade. Dia com vários eventos: um bloco por evento, empilhados por horário.
+  - Calendário do celular: dia com vários eventos mostra listras (uma cor por evento) e a quantidade; tocar abre a lista do dia para escolher.
   - Ao abrir, o carrossel rola até o mês atual (no celular ele ficava escondido no fim). Depois disso, mantém a posição que o usuário deixou.
 - **Filtros** (Quadro e Relatório): busca por cliente, sem diferenciar acentos, e filtro por tipo. "Outros" pega todo tipo fora de `TIPOS_FIXOS`. Valem só para o mês selecionado.
 - **Pendentes**: aviso no topo do Quadro com os eventos de data passada que não estão como Concluído, com o botão "Marcar concluído" (pede confirmação se ainda falta receber). Como os meses passados ficam bloqueados no Quadro, esse aviso é o caminho para chegar neles.
@@ -26,7 +27,7 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 - **Modal do evento** (criar/editar, com "Excluir evento" ao editar, que também apaga o contrato) e **detalhes** (somente leitura, com Editar e Imprimir).
 - **Detalhes**: total do evento, falta receber, custo da equipe e botão de WhatsApp (`wa.me`, com 55 na frente quando o número não tem DDI).
 - **Imprimir**: folha para a cozinha e a equipe numa aba nova (data, horário, convidados, cardápio, checklist, equipe), **sem valores nem chaves Pix**.
-- Um evento por dia: o app avisa e bloqueia ao salvar outro evento numa data já ocupada.
+- **Mais de um evento por dia** é permitido. Ao escolher uma data ocupada, o modal mostra um aviso (não bloqueia); ao salvar, pede uma confirmação ("Já existe evento neste dia: Fulano (19h). Salvar mesmo assim?"), só quando a data é nova para aquele evento. Lista, calendários, Pendentes, Relatório e planilha ordenam por data e horário (`ordemDataHora`; sem horário fica por último). A impressão mostra "Também neste dia" com os outros eventos da data (só nome e horário).
 
 ## Dados (`eventos/{id}`)
 
@@ -88,4 +89,4 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 
 ## Ideias para depois
 
-- Mais de um evento por dia; gerar contrato a partir de um modelo.
+- Gerar contrato a partir de um modelo.
