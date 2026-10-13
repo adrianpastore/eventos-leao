@@ -217,7 +217,10 @@
   .modal-actions .btn { flex: 1; }
   /* Login */
   body.carregando header, body.carregando #app,
+  body.sem-conexao header, body.sem-conexao #app,
   body.deslogado header, body.deslogado #app { display: none; }
+  #telaSemConexao { display: none; min-height: 100vh; align-items: center; justify-content: center; padding: 16px; }
+  body.sem-conexao #telaSemConexao { display: flex; }
   #telaLogin { display: none; min-height: 100vh; align-items: center; justify-content: center; padding: 16px; }
   body.deslogado #telaLogin { display: flex; }
   .login-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px 20px; width: 100%; max-width: 360px; }
@@ -317,6 +320,14 @@
 </style>
 </head>
 <body class="carregando">
+
+<div id="telaSemConexao" role="alert">
+  <div class="login-card">
+    <h1>Eventos · Leão do Parque</h1>
+    <p>Sem conexão para carregar o app. Conecte-se à internet e recarregue.</p>
+    <button type="button" class="btn primary" onclick="location.reload()">Recarregar</button>
+  </div>
+</div>
 
 <div id="telaLogin">
   <form class="login-card" onsubmit="entrar(event)">
@@ -563,9 +574,10 @@ let db = null;
 let auth = null;
 let eventos = [];
 let usandoFirestore = false;
+const modoLocal = firebaseConfig.apiKey === "COLE_AQUI";
 
 try {
-  if (firebaseConfig.apiKey !== "COLE_AQUI") {
+  if (!modoLocal) {
     firebase.initializeApp(firebaseConfig);
     db = firebase.firestore();
     auth = firebase.auth(); // o login fica salvo no aparelho até clicar em "Sair"
@@ -578,11 +590,12 @@ try {
   }
 } catch (e) {
   console.error("Erro ao iniciar Firebase:", e);
-  document.getElementById('cfgWarning').style.display = 'block';
+  db = null;
+  auth = null;
 }
 
-// Dados de exemplo (usados só enquanto o Firebase não está configurado)
-if (!usandoFirestore) {
+// Dados de exemplo usados somente no modo local explícito.
+if (modoLocal) {
   eventos = [
     { id: 'ex1', cliente: 'Maria Fernandes', telefone: '', tipo: 'Casamento', data: '2026-10-10', hora: '19:00', convidados: 80, valor: 0, sinal: 0, status: 'pago', checklist: [] },
     { id: 'ex2', cliente: 'João Ricardo', telefone: '', tipo: 'Aniversário', data: '2026-10-24', hora: '20:00', convidados: 30, valor: 0, sinal: 0, status: 'confirmado', checklist: [] }
@@ -768,7 +781,7 @@ function renderLista() {
     card.style.background = st.bg;
     card.style.color = st.text;
     card.innerHTML = `
-      <div class="hora">${e.hora || ''}</div>
+      <div class="hora">${escapeHtml(e.hora || '')}</div>
       <div class="info">
         <p class="nome">${escapeHtml(e.cliente)}</p>
         <p class="meta">${escapeHtml(e.tipo)} · ${e.convidados || 0} pessoas</p>
@@ -820,7 +833,7 @@ function renderCalendario() {
           ${i === 0 ? `<div class="evt-num">${dia}</div>` : ''}
           <div>
             <div class="evt-nome">${escapeHtml(evento.cliente)}</div>
-            <div class="evt-detalhe">${evento.hora || ''} · ${escapeHtml(evento.tipo)}</div>
+            <div class="evt-detalhe">${escapeHtml(evento.hora || '')} · ${escapeHtml(evento.tipo)}</div>
           </div>
         `;
         bloco.onclick = () => abrirVisualizacao(evento.id);
@@ -887,7 +900,7 @@ function renderPendentes(mostrar) {
       <div class="pendente-linha">
         <div class="info" onclick="abrirVisualizacao('${e.id}')">
           <div>${escapeHtml(e.cliente)}</div>
-          <div class="meta">${formatarDiaLabel(e.data)}${e.hora ? ' ' + e.hora : ''} · ${statusInfo(e.status).label}${falta > 0 ? ' · falta receber ' + fmtMoeda(falta) : ''}</div>
+          <div class="meta">${formatarDiaLabel(e.data)}${e.hora ? ' ' + escapeHtml(e.hora) : ''} · ${statusInfo(e.status).label}${falta > 0 ? ' · falta receber ' + fmtMoeda(falta) : ''}</div>
         </div>
         <button class="btn" onclick="marcarConcluido('${e.id}')">Marcar concluído</button>
       </div>`;
@@ -958,7 +971,7 @@ function abrirDia(dataStr) {
     const st = statusInfo(e.status);
     return `
       <div class="dia-evento" style="background:${st.bg}; color:${st.text};" onclick="fecharDia(); abrirVisualizacao('${e.id}')">
-        <span class="hora">${e.hora || '—'}</span>
+        <span class="hora">${escapeHtml(e.hora || '—')}</span>
         <span class="info"><strong>${escapeHtml(e.cliente)}</strong><br>${escapeHtml(e.tipo)} · ${e.convidados || 0} pessoas</span>
         <span class="status-pill" style="color:${st.text}">${st.label}</span>
       </div>`;
@@ -995,7 +1008,7 @@ function renderRelatorio() {
           <div class="relatorio-linha">
             <div class="info">
               <p class="nome">${escapeHtml(e.cliente)}</p>
-              <p class="meta">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}${e.hora ? ' ' + e.hora : ''} · ${escapeHtml(e.tipo)} · ${e.convidados || 0} convidados</p>
+              <p class="meta">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}${e.hora ? ' ' + escapeHtml(e.hora) : ''} · ${escapeHtml(e.tipo)} · ${e.convidados || 0} convidados</p>
               ${extras ? `<p class="meta">${extras}</p>` : ''}
             </div>
             <span class="valor-evento">${fmtMoeda(totalEvento(e))}</span>
@@ -1067,9 +1080,8 @@ function exportarPlanilha() {
 }
 
 function escapeHtml(s) {
-  const div = document.createElement('div');
-  div.textContent = s || '';
-  return div.innerHTML;
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /* ---------- Modal / formulário ---------- */
@@ -1420,7 +1432,7 @@ function abrirVisualizacao(id) {
     <p class="view-linha"><strong>Tipo:</strong> ${escapeHtml(ev.tipo)}</p>
     <p class="view-linha"><strong>Cardápio:</strong> ${ev.cardapio ? escapeHtml(ev.cardapio) : 'a definir'}</p>
     <p class="view-linha"><strong>Data:</strong> ${formatarDataCompleta(ev.data)}</p>
-    <p class="view-linha"><strong>Horário:</strong> ${ev.hora || 'não informado'}</p>
+    <p class="view-linha"><strong>Horário:</strong> ${escapeHtml(ev.hora || 'não informado')}</p>
     <p class="view-linha"><strong>Convidados:</strong> ${ev.convidados || 0}</p>
 
     <p class="view-secao-titulo">Financeiro</p>
@@ -1484,7 +1496,7 @@ function imprimirEvento() {
     <p class="sub">Leão do Parque · ${escapeHtml(ev.tipo)}</p>
     <table>
       ${linha('Data', formatarDataCompleta(ev.data))}
-      ${linha('Horário', ev.hora || 'não informado')}
+      ${linha('Horário', escapeHtml(ev.hora || 'não informado'))}
       ${linha('Convidados', ev.convidados || 0)}
       ${linha('Cardápio', ev.cardapio ? escapeHtml(ev.cardapio) : 'a definir')}
       ${linha('Telefone', ev.telefone ? escapeHtml(ev.telefone) : '—')}
@@ -1553,7 +1565,7 @@ let modeloErroLeitura = false;  // as regras ainda não liberam config/ (ou outr
 let pararModelo = null;
 const CHAVE_MODELO_LOCAL = 'eventosLeaoModeloContrato';
 
-if (!usandoFirestore) {
+if (modoLocal) {
   try { modeloContrato = JSON.parse(localStorage.getItem(CHAVE_MODELO_LOCAL) || 'null'); } catch (e) { modeloContrato = null; }
 }
 
@@ -1570,7 +1582,8 @@ function autorAtual() {
 
 /* Quem fez o quê: campos gravados junto com cada alteração do evento.
    Datas em texto ISO (relógio do aparelho), que funcionam igual com ou sem internet.
-   historico = últimos HISTORICO_MAX registros { quem, quando, acao }.
+   historico = registros { quem, quando, acao }, sem corte na gravação.
+   HISTORICO_MAX limita apenas a exibição às entradas mais recentes.
    ev = evento como está agora (null ao criar). Eventos antigos sem esses campos funcionam normalmente. */
 const HISTORICO_MAX = 30;
 
@@ -1578,7 +1591,11 @@ function auditoria(ev, acao) {
   const quem = autorAtual();
   const quando = new Date().toISOString();
   const anterior = ev && Array.isArray(ev.historico) ? ev.historico : [];
-  const dados = { alteradoPor: quem, alteradoEm: quando, historico: anterior.concat({ quem, quando, acao }).slice(-HISTORICO_MAX) };
+  const entrada = { quem, quando, acao };
+  const historico = usandoFirestore
+    ? firebase.firestore.FieldValue.arrayUnion(entrada)
+    : anterior.concat(entrada);
+  const dados = { alteradoPor: quem, alteradoEm: quando, historico };
   if (!ev) { dados.criadoPor = quem; dados.criadoEm = quando; }
   return dados;
 }
@@ -1589,7 +1606,7 @@ function htmlAuditoria(ev) {
   const partes = [];
   if (ev.criadoPor || ev.criadoEm) partes.push(quemQuando('Criado', ev.criadoPor, ev.criadoEm));
   if ((ev.alteradoPor || ev.alteradoEm) && ev.alteradoEm !== ev.criadoEm) partes.push(quemQuando('Última alteração', ev.alteradoPor, ev.alteradoEm));
-  const hist = (Array.isArray(ev.historico) ? ev.historico : []).filter(h => h && typeof h === 'object').slice().reverse();
+  const hist = (Array.isArray(ev.historico) ? ev.historico : []).filter(h => h && typeof h === 'object').slice(-HISTORICO_MAX).reverse();
   if (!partes.length && !hist.length) return '<p>Sem registro de quem criou (evento anterior a este controle).</p>';
   const lista = hist.map(h => `<li>${fmtDataHora(h.quando)} · ${escapeHtml(h.quem)} ${escapeHtml(h.acao)}</li>`).join('');
   return `${partes.length ? `<p>${partes.join(' · ')}</p>` : ''}
@@ -1958,7 +1975,8 @@ async function baixarContrato(id) {
 /* ---------- Login (Firebase Auth, e-mail e senha) ---------- */
 // As contas são criadas só no console do Firebase (Authentication). O app não tem cadastro.
 
-function mostrarTela(estado) { // 'carregando' | 'deslogado' | 'logado'
+function mostrarTela(estado) { // 'carregando' | 'deslogado' | 'logado' | 'semConexao'
+  document.body.classList.toggle('sem-conexao', estado === 'semConexao');
   document.body.classList.toggle('carregando', estado === 'carregando');
   document.body.classList.toggle('deslogado', estado === 'deslogado');
 }
@@ -2071,9 +2089,11 @@ if (usandoFirestore) {
       modeloErroLeitura = true;
     });
   });
-} else {
+} else if (modoLocal) {
   mostrarTela('logado');
   renderTudo();
+} else {
+  mostrarTela('semConexao');
 }
 </script>
 </body>

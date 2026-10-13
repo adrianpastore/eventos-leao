@@ -5,8 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { raiz } = require('./helpers/carregar');
-function worker(offline = false) {
-  const handlers = {}, chamadas = [], gravacoes = [], adicionados = [];
+function worker(offline = false, nomes = []) {
+  const handlers = {}, chamadas = [], gravacoes = [], adicionados = [], apagados = [];
   const resposta = { ok: true, clone: () => 'copia' };
   const cache = { put: async (...args) => { gravacoes.push(args); }, addAll: async a => { adicionados.push(...a); } };
   vm.runInNewContext(fs.readFileSync(path.join(raiz, 'sw.js'), 'utf8'), {
@@ -14,10 +14,10 @@ function worker(offline = false) {
     self: { location: { origin: 'https://x.github.io' }, addEventListener: (n, f) => { handlers[n] = f; },
       skipWaiting: async () => {}, clients: { claim: async () => {} } },
     caches: { open: async () => cache, match: async (chave) => { chamadas.push(chave); return 'casco'; },
-      keys: async () => [], delete: async () => true },
+      keys: async () => nomes, delete: async n => { apagados.push(n); return true; } },
     fetch: async () => { if (offline) throw new Error('offline simulado'); return resposta; }
   });
-  return { handlers, chamadas, gravacoes, adicionados, resposta };
+  return { handlers, chamadas, gravacoes, adicionados, resposta, apagados };
 }
 test('SW ignora Firebase e POST; GET do próprio domínio usa rede primeiro', async () => {
   const w = worker();
@@ -54,4 +54,10 @@ test('manifest válido e dimensões PNG conferem com IHDR, incluindo Apple 180',
     assert.equal(b.toString('ascii', 12, 16), 'IHDR');
     assert.equal(`${b.readUInt32BE(16)}x${b.readUInt32BE(20)}`, icone.sizes);
   }
+});
+
+test('SW remove somente caches antigos do prefixo eventos-leao-', async () => {
+ const w = worker(false, ['eventos-leao-casco-v1', 'eventos-leao-casco-v2', 'outro-app-v1']);
+ let promessa; w.handlers.activate({ waitUntil(p) { promessa = p; } }); await promessa;
+ assert.deepEqual(w.apagados, ['eventos-leao-casco-v1']);
 });

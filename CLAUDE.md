@@ -53,7 +53,7 @@ Agenda e controle de eventos do restaurante Leão do Parque. Página única: tud
 | `contrato` | ver abaixo |
 | `criadoPor`, `criadoEm` | e-mail de quem criou e data ISO; gravados só na criação |
 | `alteradoPor`, `alteradoEm` | última alteração (criar, editar, marcar concluído, anexar/substituir/excluir contrato) |
-| `historico` | `[{ quem, quando, acao }]`, só os últimos 30 (`HISTORICO_MAX`). `acao`: "criou", "editou", "editou (status: Pago)", "marcou concluído", "anexou contrato", "substituiu contrato", "excluiu contrato" |
+| `historico` | `[{ quem, quando, acao }]`, sem corte na gravação; a tela mostra as 30 entradas mais recentes (`HISTORICO_MAX`). `acao`: "criou", "editou", "editou (status: Pago)", "marcou concluído", "anexou contrato", "substituiu contrato", "excluiu contrato" |
 
 Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o campo `cardapio`, nem os campos de autoria (`criadoPor` etc.). Isso é esperado.
 
@@ -61,7 +61,7 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 
 - `auditoria(ev, acao)` monta os campos e vai junto na mesma gravação (`set` com merge, `update` ou o lote do contrato). Autor = e-mail de `auth.currentUser`; no modo local, "modo local".
 - As datas são texto ISO com o relógio do aparelho (não `serverTimestamp`), porque funcionam igual sem internet e com o `aguardarGravacao`. `fmtDataHora` também aceita Timestamp do Firestore.
-- O `historico` é montado a partir da cópia local do evento e gravado inteiro (não dá para limitar a 30 com `arrayUnion`). Se duas pessoas alterarem o mesmo evento quase ao mesmo tempo, um registro pode se perder; os dados do evento não.
+- O `historico` acrescenta cada entrada com `firebase.firestore.FieldValue.arrayUnion` no Firestore, inclusive na criação. No modo local, concatena ao array anterior. Não há corte na gravação; a tela mostra as 30 entradas mais recentes.
 - Excluir o evento apaga também o histórico dele.
 
 ## Contrato (PDF)
@@ -80,10 +80,13 @@ Eventos antigos ainda podem ter "Cardápio combinado" no checklist e não ter o 
 - `manifest.webmanifest` (nome "Eventos · Leão do Parque", curto "Eventos", `display: standalone`, cores do cabeçalho `#143327` e do fundo `#f6f5f1`) e ícones em `icons/` (192, 512 — também usado como *maskable* — e `apple-touch-icon` 180). Os ícones foram gerados com PowerShell/System.Drawing: folha de calendário com faixa bordô e "LP".
 - Caminhos relativos (`start_url` e `scope` = `./`), porque o site fica em `/eventos-leao/` no GitHub Pages.
 - `sw.js` guarda só o casco (página, manifesto, ícones). Sempre tenta a rede primeiro e só usa o cache sem internet, então nunca prende uma versão velha. **Não intercepta** nada de outro domínio (Firebase, googleapis, gstatic): os dados offline continuam com o `enablePersistence`. Ao mudar a lista de arquivos do casco, trocar o nome do cache (`eventos-leao-casco-vN`).
+- Cache atual: `eventos-leao-casco-v2`, montado com o prefixo `eventos-leao-`. A ativação apaga somente caches antigos com esse prefixo, preservando outros apps da mesma origem.
 - iPhone: Safari > Compartilhar > "Adicionar à Tela de Início" (metas `apple-mobile-web-app-*`). Android: o Chrome oferece "Instalar app".
 - O SW não é registrado em `file://`; para testar, servir a pasta por HTTP (localhost). No Chrome headless, usar um perfil (`--user-data-dir`) em caminho curto, senão o Cache API falha no Windows.
 
 ## Sem internet
+
+- Se o SDK do Firebase não carregar ou não iniciar com a configuração real, o app fica bloqueado com "Sem conexão para carregar o app. Conecte-se à internet e recarregue." e botão "Recarregar". Exemplos só no modo local explícito (`apiKey: "COLE_AQUI"` numa cópia).
 
 - `enablePersistence` guarda os dados no aparelho. Sem internet, o app abre com o que já tinha e as gravações ficam na fila até a conexão voltar.
 - Uma barra cinza avisa quando o aparelho está offline.

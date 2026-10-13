@@ -3,7 +3,8 @@
 // Sempre tenta a rede primeiro: com internet, a versão nova do site entra na hora.
 // Os dados (Firebase/Google) NÃO passam por aqui: o próprio Firestore cuida do modo offline.
 
-const CACHE = 'eventos-leao-casco-v1';
+const PREFIXO = 'eventos-leao-';
+const CACHE = PREFIXO + 'casco-v2';
 const CASCO = [
   './',
   './index.html',
@@ -20,7 +21,7 @@ self.addEventListener('install', evento => {
 self.addEventListener('activate', evento => {
   evento.waitUntil(
     caches.keys()
-      .then(nomes => Promise.all(nomes.filter(n => n !== CACHE).map(n => caches.delete(n))))
+      .then(nomes => Promise.all(nomes.filter(n => n.startsWith(PREFIXO) && n !== CACHE).map(n => caches.delete(n))))
       .then(() => self.clients.claim())
   );
 });

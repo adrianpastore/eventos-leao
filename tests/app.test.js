@@ -136,7 +136,7 @@ test('stub de innerHTML segue serialização de texto do navegador', () => {
   assert.equal(div.innerHTML, '&amp;&lt;&gt;"\'&nbsp;');
 });
 
-test('auditoria: criação, legado, limite de 30, imutabilidade e histórico inválido', () => {
+test('auditoria: criação, legado, gravação sem corte, imutabilidade e histórico inválido', () => {
   const { contexto: c } = carregar();
   const novo = c.auditoria(null, 'criou');
   assert.equal(novo.criadoPor, 'modo local');
@@ -150,8 +150,8 @@ test('auditoria: criação, legado, limite de 30, imutabilidade e histórico inv
   }
   const hist = Array.from({ length: 30 }, (_, i) => ({ acao: String(i) }));
   const editado = c.auditoria({ historico: hist }, 'nova');
-  assert.equal(editado.historico.length, 30);
-  assert.equal(editado.historico[0].acao, '1');
+  assert.equal(editado.historico.length, 31);
+  assert.equal(editado.historico[0].acao, '0');
   assert.equal(editado.historico.at(-1).acao, 'nova');
   assert.equal(hist.length, 30);
 });
@@ -181,4 +181,51 @@ test('fmtDataHora: vazio, inválido, ISO e Timestamp sem depender do fuso', () =
   const esperado = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   assert.equal(c.fmtDataHora(d.toISOString()), esperado);
   assert.equal(c.fmtDataHora({ toDate: () => d }), esperado);
+});
+
+ test('escapeHtml protege atributos e mantém valores ausentes', () => {
+  const { contexto: c } = carregar();
+  const html = c.escapeHtml('" autofocus onfocus="alert(1)');
+  assert.doesNotMatch(html, /"/); assert.match(html, /&quot;/);
+  assert.equal(c.escapeHtml("'"), '&#39;');
+  assert.equal(c.escapeHtml(null), ''); assert.equal(c.escapeHtml(undefined), '');
+  assert.equal(c.escapeHtml(0), '0');
+ });
+ test('auditoria Firestore acrescenta a entrada com arrayUnion inclusive na criação', () => {
+  const entradas = [], sentinela = {};
+  const { contexto: c } = carregar({ usandoFirestore: true, auth: { currentUser: { email: 'teste@local' } },
+    firebase: { firestore: { FieldValue: { arrayUnion(e) { entradas.push(e); return sentinela; } } } } });
+  for (const ev of [null, { historico: [{ acao: 'antiga' }] }]) {
+    const dados = c.auditoria(ev, 'nova');
+    assert.equal(dados.historico, sentinela);
+    assert.equal(entradas.at(-1).quem, 'teste@local');
+    assert.equal(entradas.at(-1).quando, dados.alteradoEm);
+    assert.match(entradas.at(-1).quando, /\.\d{3}Z$/);
+    assert.equal(entradas.at(-1).acao, 'nova');
+  }
+  assert.equal(entradas.length, 2);
+ });
+ test('htmlAuditoria mostra só as 30 entradas mais recentes', () => {
+  const { contexto: c } = carregar();
+  const historico = Array.from({ length: 35 }, (_, i) => ({ quem: 'local', acao: 'registro-' + i }));
+  const html = c.htmlAuditoria({ historico });
+  assert.equal((html.match(/<li>/g) || []).length, 30);
+  assert.match(html, /Ver histórico \(30\)/);
+  assert.doesNotMatch(html, /registro-0<|registro-4</);
+  assert.ok(html.indexOf('registro-34<') < html.indexOf('registro-5<'));
+  assert.equal(historico.length, 35);
+ });
+
+test('falha do SDK bloqueia o app sem carregar exemplos nem iniciar login', () => {
+  const { script } = require('./helpers/carregar');
+  for (const firebase of [undefined, { initializeApp() { throw new Error('falha simulada'); } }]) {
+    let tela, renderizou = false;
+    const c = vm.createContext({ firebase, console: { error() {} }, document: { getElementById() { assert.fail('Não deve mostrar aviso local'); } },
+      mostrarTela(e) { tela = e; }, renderTudo() { renderizou = true; } });
+    vm.runInContext(script.slice(0, script.indexOf('const STATUS')), c);
+    vm.runInContext(script.slice(script.lastIndexOf('let pararLeitura = null;')), c);
+    assert.equal(tela, 'semConexao'); assert.equal(renderizou, false);
+    assert.equal(vm.runInContext('eventos.length', c), 0);
+    assert.equal(vm.runInContext('auth', c), null); assert.equal(vm.runInContext('db', c), null);
+  }
 });
